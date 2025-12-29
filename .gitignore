@@ -1,0 +1,33 @@
+# 环境配置
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# 数据文件
+data/
+backups/*.db
+
+# 日志
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+
+# 测试
+.coverage
+.pytest_cache/
+htmlcov/
+
+# 临时文件
+*.tmp
+*.bak

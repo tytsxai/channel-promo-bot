@@ -1,0 +1,92 @@
+import asyncio
+import logging
+from aiogram import Bot
+from aiogram.exceptions import (
+    TelegramRetryAfter,
+    TelegramForbiddenError,
+    TelegramBadRequest,
+    TelegramNotFound,
+)
+from src.services.channel_service import ChannelService
+from src.utils import escape_markdown
+
+logger = logging.getLogger(__name__)
+
+
+async def send_promo_to_all(bot: Bot) -> tuple[int, int]:
+    channels = await ChannelService.get_approved_channels()
+    if not channels:
+        logger.info("No approved channels, skipping promo")
+        return 0, 0
+
+    text = _build_promo_text(channels)
+    sent_count = 0
+    failed_count = 0
+
+    for ch in channels:
+        chat_id = int(ch["chat_id"])
+        success = await _send_with_retry(bot, chat_id, text)
+        if success:
+            sent_count += 1
+        else:
+            failed_count += 1
+        await asyncio.sleep(0.1)
+
+    logger.info(f"Promo broadcast: {sent_count} sent, {failed_count} failed")
+    return sent_count, failed_count
+
+
+def _build_promo_text(channels: list[dict]) -> str:
+    grouped: dict[str, list] = {}
+    for ch in channels:
+        cat = ch["category"] or "其他"
+        grouped.setdefault(cat, []).append(ch)
+
+    lines = ["🔥 *今日互推精选* 🔥\n"]
+
+    for cat, chs in grouped.items():
+        lines.append(f"\n📁 *{escape_markdown(cat)}*")
+        for ch in chs:
+            title = escape_markdown(ch['title'])
+            if ch["username"]:
+                lines.append(f"👉 [{title}](https://t.me/{ch['username']})")
+            else:
+                lines.append(f"👉 {title}")
+
+    lines.append("\n" + "─" * 20)
+    lines.append("💡 想加入互推？私聊机器人发送 /help 了解详情")
+
+    return "\n".join(lines)
+
+
+async def _send_with_retry(
+    bot: Bot, chat_id: int, text: str, max_retries: int = 3
+) -> bool:
+    for attempt in range(max_retries):
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                parse_mode="MarkdownV2",
+                disable_web_page_preview=True,
+            )
+            return True
+        except TelegramRetryAfter as e:
+            logger.warning(f"Rate limited, waiting {e.retry_after}s")
+            await asyncio.sleep(e.retry_after)
+        except TelegramForbiddenError:
+            logger.warning(f"Bot removed from channel {chat_id}, marking inactive")
+            await ChannelService.mark_inactive(chat_id)
+            return False
+        except TelegramNotFound:
+            logger.warning(f"Channel {chat_id} not found, marking inactive")
+            await ChannelService.mark_inactive(chat_id)
+            return False
+        except TelegramBadRequest as e:
+            logger.error(f"Bad request to {chat_id}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Send failed to {chat_id} (attempt {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)
+    return False
