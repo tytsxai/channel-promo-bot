@@ -9,12 +9,14 @@
 - **AI 分类**: 使用 OpenAI 自动对频道进行分类
 - **定时推送**: 每日定时向所有参与频道发送互推文案
 - **速率限制**: 防止滥用的请求频率控制
+- **健康检查**: 可选 HTTP 健康检查端点
+- **日志与运维**: 支持日志级别配置和滚动日志
 
 ## 快速开始
 
 ### 环境要求
 
-- Python 3.11+
+- Python 3.11+（建议 3.11/3.12）
 - SQLite 3
 
 ### 安装步骤
@@ -22,7 +24,7 @@
 ```bash
 # 1. 克隆项目
 git clone <repository-url>
-cd 互推机器儿
+cd 频道互推机器人-channel-promo-bot
 
 # 2. 创建虚拟环境
 python3 -m venv .venv
@@ -30,6 +32,9 @@ source .venv/bin/activate
 
 # 3. 安装依赖
 pip install -r requirements.txt
+
+# (可选) 安装开发依赖
+pip install -r requirements-dev.txt
 
 # 4. 配置环境变量
 cp .env.example .env
@@ -49,6 +54,8 @@ ADMIN_IDS=123456789,987654321
 
 # OpenAI API Key (用于AI分类，可选)
 OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-3.5-turbo
+# OPENAI_BASE_URL=https://api.openai.com/v1
 
 # 最低成员数要求
 MIN_MEMBERS=700
@@ -59,6 +66,25 @@ DATABASE_PATH=data/bot.db
 # 定时推送时间 (UTC时区)
 PROMO_HOUR_UTC=5
 PROMO_MINUTE=0
+
+# 速率限制配置
+RATE_LIMIT=10
+RATE_LIMIT_WINDOW=60
+RATE_LIMIT_CLEANUP=300
+
+# 日志配置
+LOG_LEVEL=INFO
+LOG_FORMAT=text
+# LOG_FILE=logs/bot.log
+LOG_MAX_BYTES=10485760
+LOG_BACKUP_COUNT=5
+
+# 健康检查（0=禁用）
+HEALTHCHECK_HOST=127.0.0.1
+HEALTHCHECK_PORT=0
+
+# 运行环境
+ENVIRONMENT=production
 ```
 
 ### 运行机器人
@@ -82,6 +108,8 @@ python main.py
 | `/help` | 查看帮助信息 |
 | `/submit <频道链接>` | 提交频道参与互推 |
 | `/list` | 查看已通过审核的频道列表 |
+
+> 提示：提交者需为频道管理员或创建者，机器人需加入频道并具备权限（建议设为管理员）。
 
 ### 管理员命令
 
@@ -144,11 +172,29 @@ python main.py
 
 ```bash
 # 运行所有测试
-pytest tests/ -v
+python -m pytest tests/ -v
 
 # 运行测试并查看覆盖率
-pytest tests/ -v --cov=src
+python -m pytest tests/ -v --cov=src
+
+# 运行 lint
+python -m ruff check .
 ```
+
+## 健康检查
+
+当设置 `HEALTHCHECK_PORT` 为非 0 时，服务会启动一个轻量 HTTP 健康检查端点：
+
+- `GET /health`：进程存活检查
+- `GET /ready`：包含数据库连接检查
+
+## 运维与部署文档
+
+更多细节请参考：
+
+- `docs/OPERATIONS.md`
+- `docs/DEPLOYMENT.md`
+- `docs/TROUBLESHOOTING.md`
 
 ## 许可证
 
