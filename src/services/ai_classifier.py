@@ -1,6 +1,8 @@
 import logging
-from openai import AsyncOpenAI
+
 import httpx
+from openai import AsyncOpenAI
+
 from src.config import config
 
 logger = logging.getLogger(__name__)
@@ -12,10 +14,13 @@ _client: AsyncOpenAI | None = None
 def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncOpenAI(
-            api_key=config.openai_api_key,
-            timeout=httpx.Timeout(30.0, connect=10.0),
-        )
+        client_kwargs: dict[str, object] = {
+            "api_key": config.openai_api_key,
+            "timeout": httpx.Timeout(30.0, connect=10.0),
+        }
+        if config.openai_base_url:
+            client_kwargs["base_url"] = config.openai_base_url
+        _client = AsyncOpenAI(**client_kwargs)
     return _client
 
 CATEGORIES = [
@@ -47,7 +52,7 @@ async def classify_channel(title: str, description: str = "") -> str:
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=config.openai_model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=20,
             temperature=0,

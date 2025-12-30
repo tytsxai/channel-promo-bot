@@ -1,17 +1,22 @@
 import logging
-import aiosqlite
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from sqlite3 import IntegrityError
+from typing import Any
+
+import aiosqlite
+
 from src.config import config
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def get_db():
+async def get_db() -> AsyncIterator[aiosqlite.Connection]:
     db = await aiosqlite.connect(config.database_path)
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA busy_timeout=5000")
+    await db.execute("PRAGMA foreign_keys=ON")
     try:
         yield db
     finally:
@@ -43,7 +48,7 @@ class ChannelService:
                 return None
 
     @staticmethod
-    async def get_pending_channels() -> list[dict]:
+    async def get_pending_channels() -> list[dict[str, Any]]:
         async with get_db() as db:
             cursor = await db.execute(
                 "SELECT * FROM channels WHERE status = ? ORDER BY submitted_at",
@@ -57,7 +62,7 @@ class ChannelService:
         async with get_db() as db:
             cursor = await db.execute(
                 """
-                UPDATE channels SET status = 'approved', approved_by = ?, 
+                UPDATE channels SET status = 'approved', approved_by = ?,
                 approved_at = CURRENT_TIMESTAMP, category = ? WHERE id = ?
             """,
                 (approved_by, category, channel_id),
@@ -75,7 +80,7 @@ class ChannelService:
             return cursor.rowcount > 0
 
     @staticmethod
-    async def get_channel_by_id(channel_id: int) -> dict | None:
+    async def get_channel_by_id(channel_id: int) -> dict[str, Any] | None:
         async with get_db() as db:
             cursor = await db.execute(
                 "SELECT * FROM channels WHERE id = ?", (channel_id,)
@@ -92,7 +97,7 @@ class ChannelService:
             return await cursor.fetchone() is not None
 
     @staticmethod
-    async def get_approved_channels() -> list[dict]:
+    async def get_approved_channels() -> list[dict[str, Any]]:
         async with get_db() as db:
             cursor = await db.execute(
                 "SELECT * FROM channels WHERE status = ? ORDER BY category, title",
@@ -132,7 +137,7 @@ class ChannelService:
     @staticmethod
     async def get_pending_channels_paginated(
         page: int = 0, per_page: int = 5
-    ) -> tuple[list[dict], int]:
+    ) -> tuple[list[dict[str, Any]], int]:
         """获取分页的待审核频道列表，返回 (频道列表, 总数)"""
         async with get_db() as db:
             # 获取总数
