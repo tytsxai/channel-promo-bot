@@ -4,7 +4,7 @@
 
 ### 系统要求
 
-- Python 3.11+
+- Python 3.11+（建议 3.11/3.12）
 - SQLite 3
 - Git
 
@@ -13,7 +13,7 @@
 ```bash
 # 1. 克隆项目
 git clone <repository-url>
-cd channel-promo-bot
+cd 频道互推机器人-channel-promo-bot
 
 # 2. 创建虚拟环境
 python3 -m venv .venv
@@ -21,6 +21,9 @@ source .venv/bin/activate
 
 # 3. 安装依赖
 pip install -r requirements.txt
+
+# (可选) 安装开发依赖
+pip install -r requirements-dev.txt
 
 # 4. 配置环境变量
 cp .env.example .env
@@ -34,10 +37,23 @@ cp .env.example .env
 | `BOT_TOKEN` | 是 | 从 @BotFather 获取 |
 | `ADMIN_IDS` | 是 | 管理员ID，逗号分隔 |
 | `OPENAI_API_KEY` | 否 | AI分类功能 |
+| `OPENAI_MODEL` | 否 | AI 模型名称 |
+| `OPENAI_BASE_URL` | 否 | 自定义 OpenAI API 入口 |
 | `MIN_MEMBERS` | 否 | 最低成员数，默认700 |
 | `DATABASE_PATH` | 否 | 数据库路径 |
 | `PROMO_HOUR_UTC` | 否 | 推送小时(UTC) |
 | `PROMO_MINUTE` | 否 | 推送分钟 |
+| `RATE_LIMIT` | 否 | 速率限制次数 |
+| `RATE_LIMIT_WINDOW` | 否 | 速率限制窗口(秒) |
+| `RATE_LIMIT_CLEANUP` | 否 | 速率记录清理间隔(秒) |
+| `LOG_LEVEL` | 否 | 日志级别 |
+| `LOG_FORMAT` | 否 | 日志格式(text/json) |
+| `LOG_FILE` | 否 | 日志文件路径 |
+| `LOG_MAX_BYTES` | 否 | 单文件最大字节 |
+| `LOG_BACKUP_COUNT` | 否 | 日志备份数量 |
+| `HEALTHCHECK_HOST` | 否 | 健康检查地址 |
+| `HEALTHCHECK_PORT` | 否 | 健康检查端口(0禁用) |
+| `ENVIRONMENT` | 否 | 运行环境 |
 
 ---
 
@@ -58,10 +74,13 @@ python main.py
 
 ```bash
 # 运行所有测试
-pytest tests/ -v
+python -m pytest tests/ -v
 
 # 带覆盖率
-pytest tests/ -v --cov=src
+python -m pytest tests/ -v --cov=src
+
+# 运行 lint
+python -m ruff check .
 ```
 
 ---
@@ -123,9 +142,10 @@ pytest tests/ -v --cov=src
 
 ### 修改数据库结构
 
-1. 编辑 `src/models/database.py` 中的建表语句
-2. 更新 `ChannelService` 中的相关方法
-3. 备份现有数据后重新初始化
+1. 在 `src/models/database.py` 中新增迁移函数
+2. 添加到 `MIGRATIONS` 列表并更新版本号
+3. 更新 `ChannelService` 中的相关方法
+4. 在测试中覆盖新增迁移
 
 ---
 

@@ -5,9 +5,10 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    main.py (入口)                        │
-│  - 初始化数据库                                          │
-│  - 配置调度器                                            │
-│  - 启动 Bot                                              │
+    │  - 初始化数据库                                          │
+    │  - 配置调度器                                            │
+    │  - 启动 Bot                                              │
+    │  - 启动健康检查端点                                      │
 └─────────────────────────────────────────────────────────┘
                            │
            ┌───────────────┼───────────────┐
@@ -33,6 +34,7 @@
 ├── main.py                 # 应用入口
 ├── src/
 │   ├── config.py           # 配置管理
+│   ├── logging_setup.py    # 日志配置
 │   ├── middleware.py       # 速率限制中间件
 │   ├── utils.py            # 工具函数
 │   ├── handlers/           # 消息处理器
@@ -41,7 +43,8 @@
 │   ├── services/           # 业务逻辑
 │   │   ├── channel_service.py
 │   │   ├── promo_service.py
-│   │   └── ai_classifier.py
+│   │   ├── ai_classifier.py
+│   │   └── health_server.py
 │   └── models/
 │       └── database.py     # 数据库初始化
 ├── scripts/                # 运维脚本
@@ -73,6 +76,13 @@
 - 工厂方法 `from_env()` 从环境变量创建实例
 - 启动时验证必填配置，失败则退出
 
+### 2.1 日志配置 (src/logging_setup.py)
+
+**职责**：统一日志格式与输出
+
+- 支持文本与 JSON 日志格式
+- 可选滚动日志文件输出
+
 ### 3. 处理器层 (src/handlers/)
 
 **user_handlers.py** - 用户命令处理
@@ -101,6 +111,10 @@
 - OpenAI GPT-3.5 自动分类
 - 单例模式管理客户端
 - 优雅降级（无 API Key 返回默认值）
+
+**health_server.py** - 健康检查
+- 提供 `/health` 和 `/ready` 端点
+- 启用数据库连通性检查
 
 ### 5. 中间件 (src/middleware.py)
 
@@ -167,6 +181,18 @@ APScheduler 触发定时任务
         │
         ▼
   处理失效频道（标记 inactive）
+
+### 运行时健康检查
+
+```
+健康检查端口启动 (可选)
+        │
+        ▼
+GET /health /ready
+        │
+        ▼
+返回 JSON 状态与数据库连通性
+```
 ```
 
 ---

@@ -18,10 +18,23 @@ class Config:
     bot_token: str        # Telegram Bot Token
     admin_ids: list[int]  # 管理员用户ID列表
     openai_api_key: str   # OpenAI API密钥
+    openai_model: str     # OpenAI 模型名称
+    openai_base_url: str | None  # OpenAI API Base URL
     min_members: int      # 最低成员数要求
     database_path: str    # 数据库文件路径
     promo_hour_utc: int   # 推送小时 (UTC)
     promo_minute: int     # 推送分钟
+    rate_limit: int       # 速率限制次数
+    rate_limit_window: int  # 速率限制窗口(秒)
+    rate_limit_cleanup: int # 速率记录清理间隔(秒)
+    log_level: str        # 日志级别
+    log_format: str       # 日志格式(text/json)
+    log_file: str | None  # 日志文件路径
+    log_max_bytes: int    # 单文件最大字节
+    log_backup_count: int # 日志备份数量
+    healthcheck_host: str # 健康检查地址
+    healthcheck_port: int # 健康检查端口
+    environment: str      # 运行环境
 ```
 
 #### 方法
@@ -37,10 +50,23 @@ class Config:
 | `BOT_TOKEN` | 是 | - | Telegram Bot Token |
 | `ADMIN_IDS` | 是 | - | 管理员ID，逗号分隔 |
 | `OPENAI_API_KEY` | 否 | `""` | OpenAI API密钥 |
+| `OPENAI_MODEL` | 否 | `gpt-3.5-turbo` | OpenAI 模型名称 |
+| `OPENAI_BASE_URL` | 否 | - | OpenAI API Base URL |
 | `MIN_MEMBERS` | 否 | `700` | 最低成员数 |
 | `DATABASE_PATH` | 否 | `data/bot.db` | 数据库路径 |
 | `PROMO_HOUR_UTC` | 否 | `5` | 推送小时 (0-23) |
 | `PROMO_MINUTE` | 否 | `0` | 推送分钟 (0-59) |
+| `RATE_LIMIT` | 否 | `10` | 速率限制次数 |
+| `RATE_LIMIT_WINDOW` | 否 | `60` | 速率限制窗口 |
+| `RATE_LIMIT_CLEANUP` | 否 | `300` | 速率记录清理间隔 |
+| `LOG_LEVEL` | 否 | `INFO` | 日志级别 |
+| `LOG_FORMAT` | 否 | `text` | 日志格式 |
+| `LOG_FILE` | 否 | - | 日志文件路径 |
+| `LOG_MAX_BYTES` | 否 | `10485760` | 日志单文件大小 |
+| `LOG_BACKUP_COUNT` | 否 | `5` | 日志备份数量 |
+| `HEALTHCHECK_HOST` | 否 | `127.0.0.1` | 健康检查地址 |
+| `HEALTHCHECK_PORT` | 否 | `0` | 健康检查端口(0禁用) |
+| `ENVIRONMENT` | 否 | `production` | 运行环境 |
 
 ---
 
@@ -81,6 +107,10 @@ async def init_db() -> None
 **索引**
 - `idx_channels_status` - 状态索引
 - `idx_channels_category` - 分类索引
+
+#### 迁移机制
+
+通过 `PRAGMA user_version` 管理迁移版本。新增结构时在 `MIGRATIONS` 中添加迁移函数。
 
 ---
 
@@ -132,7 +162,7 @@ channels, total = await ChannelService.get_pending_channels_paginated(
 
 ### classify_channel()
 
-使用 OpenAI GPT 对频道进行自动分类。
+使用 OpenAI 对频道进行自动分类，可通过 `OPENAI_MODEL` 和 `OPENAI_BASE_URL` 调整模型与 API 入口。
 
 ```python
 async def classify_channel(title: str, description: str = "") -> str
@@ -217,3 +247,32 @@ def escape_markdown(text: str) -> str
 #### 转义字符
 
 `_ * [ ] ( ) ~ \` > # + = | { } . ! -`
+
+---
+
+## 8. 日志配置 (src/logging_setup.py)
+
+### configure_logging()
+
+初始化日志系统，支持文本或 JSON 格式、可选滚动日志文件输出。
+
+```python
+def configure_logging(config: Config) -> None
+```
+
+---
+
+## 9. 健康检查 (src/services/health_server.py)
+
+### start_health_server()
+
+启动轻量 HTTP 健康检查服务。
+
+```python
+async def start_health_server(host: str, port: int) -> asyncio.AbstractServer
+```
+
+#### 端点
+
+- `GET /health` - 进程存活检查
+- `GET /ready` - 包含数据库连接检查
