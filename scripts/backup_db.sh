@@ -2,13 +2,30 @@
 # SQLite 数据库备份脚本
 # 用法: ./scripts/backup_db.sh
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-DB_PATH="${PROJECT_DIR}/data/bot.db"
+ENV_FILE="${PROJECT_DIR}/.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    set +a
+fi
+
+DB_PATH="${DATABASE_PATH:-${PROJECT_DIR}/data/bot.db}"
+if [[ "$DB_PATH" != /* ]]; then
+    DB_PATH="${PROJECT_DIR}/${DB_PATH}"
+fi
 BACKUP_DIR="${PROJECT_DIR}/backups"
 RETENTION_DAYS=7
+
+# 检查 sqlite3 是否存在
+if ! command -v sqlite3 >/dev/null 2>&1; then
+    echo "错误: 未找到 sqlite3 命令，请先安装 sqlite3"
+    exit 1
+fi
 
 # 检查数据库文件是否存在
 if [ ! -f "$DB_PATH" ]; then

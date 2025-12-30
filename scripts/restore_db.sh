@@ -2,11 +2,24 @@
 # SQLite 数据库恢复脚本
 # 用法: ./scripts/restore_db.sh <备份文件路径>
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-DB_PATH="${PROJECT_DIR}/data/bot.db"
+ENV_FILE="${PROJECT_DIR}/.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    set +a
+fi
+
+DB_PATH="${DATABASE_PATH:-${PROJECT_DIR}/data/bot.db}"
+if [[ "$DB_PATH" != /* ]]; then
+    DB_PATH="${PROJECT_DIR}/${DB_PATH}"
+fi
+DB_DIR="$(dirname "$DB_PATH")"
+mkdir -p "$DB_DIR"
 
 # 检查参数
 if [ -z "$1" ]; then

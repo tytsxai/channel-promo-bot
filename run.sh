@@ -26,4 +26,4 @@ python main.py
 
 # 定时备份配置说明:
 # 添加以下 cron 任务实现每天凌晨 2:00 自动备份:
-# 0 2 * * * /path/to/互推机器儿/scripts/backup_db.sh >> /var/log/bot_backup.log 2>&1
+# 0 2 * * * /path/to/频道互推机器人-channel-promo-bot/scripts/backup_db.sh >> /var/log/bot_backup.log 2>&1
