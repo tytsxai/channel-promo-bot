@@ -1,11 +1,13 @@
 import logging
+
 from aiogram import Router
-from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
+from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from src.config import config
-from src.services.channel_service import ChannelService
 from src.services.ai_classifier import classify_channel
+from src.services.channel_service import ChannelService
 from src.utils import escape_markdown
 
 logger = logging.getLogger(__name__)
@@ -20,14 +22,14 @@ PENDING_PER_PAGE = 5
 
 
 @router.message(Command("pending"))
-async def cmd_pending(message: Message):
+async def cmd_pending(message: Message) -> None:
     if not is_admin(message.from_user.id):
         return
 
     await _show_pending_page(message, page=0)
 
 
-async def _show_pending_page(target: Message | CallbackQuery, page: int):
+async def _show_pending_page(target: Message | CallbackQuery, page: int) -> None:
     """显示待审核频道的指定页"""
     channels, total = await ChannelService.get_pending_channels_paginated(
         page=page, per_page=PENDING_PER_PAGE
@@ -47,7 +49,11 @@ async def _show_pending_page(target: Message | CallbackQuery, page: int):
 
     for ch in channels:
         title = escape_markdown(ch['title'])
-        link = f"@{ch['username']}" if ch['username'] else "无链接"
+        link = (
+            f"@{escape_markdown(ch['username'])}"
+            if ch['username']
+            else "无链接"
+        )
         lines.append(f"• *{title}* \\- {link} \\({ch['member_count']}人\\)")
 
     # 构建键盘
@@ -78,7 +84,7 @@ async def _show_pending_page(target: Message | CallbackQuery, page: int):
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("approve:"))
-async def cb_approve(callback: CallbackQuery):
+async def cb_approve(callback: CallbackQuery) -> None:
     if not is_admin(callback.from_user.id):
         await callback.answer("无权限", show_alert=True)
         return
@@ -107,7 +113,7 @@ async def cb_approve(callback: CallbackQuery):
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("reject:"))
-async def cb_reject(callback: CallbackQuery):
+async def cb_reject(callback: CallbackQuery) -> None:
     if not is_admin(callback.from_user.id):
         await callback.answer("无权限", show_alert=True)
         return
@@ -132,7 +138,7 @@ async def cb_reject(callback: CallbackQuery):
 
 
 @router.message(Command("stats"))
-async def cmd_stats(message: Message):
+async def cmd_stats(message: Message) -> None:
     if not is_admin(message.from_user.id):
         return
 
@@ -146,7 +152,7 @@ async def cmd_stats(message: Message):
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("pending_page:"))
-async def cb_pending_page(callback: CallbackQuery):
+async def cb_pending_page(callback: CallbackQuery) -> None:
     if not is_admin(callback.from_user.id):
         await callback.answer("无权限", show_alert=True)
         return

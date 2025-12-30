@@ -1,5 +1,8 @@
 import time
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from aiogram import BaseMiddleware
 from aiogram.types import Message
 
@@ -12,7 +15,7 @@ class RateLimitMiddleware(BaseMiddleware):
         self.requests: dict[int, list[float]] = defaultdict(list)
         self._last_cleanup = time.time()
 
-    def _cleanup_stale_entries(self, now: float):
+    def _cleanup_stale_entries(self, now: float) -> None:
         """清理过期的用户记录，防止内存泄漏"""
         if now - self._last_cleanup < self.cleanup_interval:
             return
@@ -25,7 +28,12 @@ class RateLimitMiddleware(BaseMiddleware):
             del self.requests[uid]
         self._last_cleanup = now
 
-    async def __call__(self, handler, event: Message, data: dict):
+    async def __call__(
+        self,
+        handler: Callable[[Message, dict[str, Any]], Awaitable[Any]],
+        event: Message,
+        data: dict[str, Any],
+    ) -> Any:
         if not isinstance(event, Message) or not event.from_user:
             return await handler(event, data)
 
