@@ -1,4 +1,3 @@
-import pytest
 from src.utils import escape_markdown
 
 
@@ -16,6 +15,7 @@ class TestEscapeMarkdown:
         assert escape_markdown("Hello_World") == r"Hello\_World"
         assert escape_markdown("*bold*") == r"\*bold\*"
         assert escape_markdown("[link]") == r"\[link\]"
+        assert escape_markdown(r"path\\to") == r"path\\\\to"
 
     def test_mixed_content(self):
         result = escape_markdown("Test_Channel (Official)")
