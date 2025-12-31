@@ -406,6 +406,11 @@ async def handle_text_message(message: Message, bot: Bot) -> None:
 
     if _extract_username(text):
         await _handle_channel_link(message, text, bot)
+        return
+
+    if any(token in text for token in ("t.me", "telegram.me", "@")):
+        await _handle_channel_link(message, text, bot)
+        return
 
 
 @router.message(Command("list"))
