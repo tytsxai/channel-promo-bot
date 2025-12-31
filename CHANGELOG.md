@@ -19,3 +19,4 @@ All notable changes to this project will be documented in this file.
 - 输入链接解析更健壮
 - 推送发送时对异常 chat_id 记录并跳过
 - 并发重复提交时返回重复提示，避免误报提交成功
+- 测试依赖移至开发依赖，生产依赖更精简
