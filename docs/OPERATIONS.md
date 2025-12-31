@@ -25,6 +25,7 @@
 - [ ] 数据库目录 `data/` 存在
 - [ ] 备份目录 `backups/` 存在
 - [ ] 脚本有执行权限
+- [ ] 确认仅运行单实例（SQLite 不适合多实例并发写）
 
 ### 验证命令
 
@@ -45,6 +46,7 @@ ls -la backups/
 - `ADMIN_IDS` 仅配置必要管理员，避免超量授权
 - `HEALTHCHECK_HOST` 建议绑定 `127.0.0.1`，不对公网暴露
 - 若怀疑密钥泄露，请立即更换 Bot Token 与 OpenAI Key
+- 生产环境避免 `LOG_LEVEL=DEBUG`，防止敏感信息误入日志
 
 ---
 

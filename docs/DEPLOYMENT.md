@@ -9,6 +9,7 @@
 - 确保 `data/` 与 `backups/` 目录可写
 - 如需健康检查，设置 `HEALTHCHECK_PORT` 为非 0
 - 生产环境建议使用密钥管理服务注入环境变量，不要提交 `.env`
+- 当前使用 SQLite，仅建议单实例运行；如需多实例请评估迁移至集中式数据库
 
 ## 2. 安装依赖
 
@@ -25,6 +26,7 @@ pip install -r requirements.txt
 ```
 
 数据库迁移会在启动时自动执行（基于 `PRAGMA user_version`）。
+启动时会校验 `BOT_TOKEN` 与 Telegram 连接，失败将直接退出并打印日志。
 
 ## 4. Systemd 部署示例
 

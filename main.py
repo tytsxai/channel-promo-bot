@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import signal
 from datetime import UTC
@@ -18,6 +19,62 @@ configure_logging(config)
 logger = logging.getLogger(__name__)
 
 
+def _log_startup_summary() -> None:
+    healthcheck = (
+        f"{config.healthcheck_host}:{config.healthcheck_port}"
+        if config.healthcheck_port > 0
+        else "disabled"
+    )
+    logger.info(
+        "Startup config: env=%s db=%s promo=%02d:%02d UTC rate_limit=%s/%ss "
+        "healthcheck=%s log_format=%s log_file=%s openai=%s",
+        config.environment,
+        config.database_path,
+        config.promo_hour_utc,
+        config.promo_minute,
+        config.rate_limit,
+        config.rate_limit_window,
+        healthcheck,
+        config.log_format,
+        config.log_file or "stdout",
+        "enabled" if config.openai_api_key else "disabled",
+    )
+
+
+def _warn_on_risky_config() -> None:
+    if config.environment.lower() == "production" and config.log_level == "DEBUG":
+        logger.warning("LOG_LEVEL=DEBUG in production environment")
+    if config.healthcheck_port > 0 and config.healthcheck_host not in {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+    }:
+        logger.warning(
+            "Healthcheck is bound to non-loopback host: %s", config.healthcheck_host
+        )
+
+
+def _set_event_loop_exception_handler(loop: asyncio.AbstractEventLoop) -> None:
+    def _handler(_: asyncio.AbstractEventLoop, context: dict) -> None:
+        message = context.get("message", "Unhandled exception in event loop")
+        exc = context.get("exception")
+        if exc:
+            logger.error("%s", message, exc_info=exc)
+        else:
+            logger.error("%s", message)
+
+    loop.set_exception_handler(_handler)
+
+
+async def _validate_bot(bot: Bot) -> None:
+    try:
+        me = await bot.get_me()
+    except Exception:
+        logger.exception("Failed to validate BOT_TOKEN or Telegram connectivity")
+        raise
+    logger.info("Bot identity verified: id=%s username=@%s", me.id, me.username or "")
+
+
 async def scheduled_promo(bot: Bot):
     try:
         logger.info("Starting scheduled promo broadcast...")
@@ -28,10 +85,19 @@ async def scheduled_promo(bot: Bot):
 
 
 async def main():
+    _log_startup_summary()
+    _warn_on_risky_config()
+
     await init_db()
     logger.info("Database initialized")
 
     bot = Bot(token=config.bot_token)
+    try:
+        await _validate_bot(bot)
+    except Exception:
+        with contextlib.suppress(Exception):
+            await bot.session.close()
+        raise
     dp = Dispatcher()
 
     dp.message.middleware(
@@ -74,13 +140,18 @@ async def main():
             return
         shutdown_called = True
         logger.info("Shutting down...")
-        scheduler.shutdown(wait=False)
+        try:
+            scheduler.shutdown(wait=False)
+        except Exception:
+            logger.exception("Scheduler shutdown failed")
         if health_server is not None:
             health_server.close()
             await health_server.wait_closed()
-        await bot.session.close()
+        with contextlib.suppress(Exception):
+            await bot.session.close()
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
+    _set_event_loop_exception_handler(loop)
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))

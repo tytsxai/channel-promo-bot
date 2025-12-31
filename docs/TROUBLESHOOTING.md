@@ -11,6 +11,15 @@
 - 验证 Bot Token 是否正确
 - 使用 `systemctl status` 或 `ps` 查看进程状态
 
+## 1.1 启动即退出
+
+可能原因：
+- `BOT_TOKEN` 无效或 Telegram 网络不可达（启动时会校验）
+
+处理步骤：
+- 确认 `.env` 中的 `BOT_TOKEN`
+- 检查服务器对 Telegram 的网络连通性
+
 ## 2. 提交频道失败
 
 可能原因：
