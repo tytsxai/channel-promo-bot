@@ -18,3 +18,4 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - 输入链接解析更健壮
 - 推送发送时对异常 chat_id 记录并跳过
+- 并发重复提交时返回重复提示，避免误报提交成功

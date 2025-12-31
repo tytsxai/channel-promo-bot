@@ -97,13 +97,16 @@ async def cmd_submit(message: Message, command: CommandObject, bot: Bot) -> None
             await message.answer("⚠️ 该频道已提交过，请勿重复提交")
             return
 
-        await ChannelService.add_channel(
+        channel_id = await ChannelService.add_channel(
             chat_id=str(chat.id),
             title=chat.title or username,
             username=username,
             member_count=member_count,
             submitted_by=user_id,
         )
+        if channel_id is None:
+            await message.answer("⚠️ 该频道已提交过，请勿重复提交")
+            return
     except Exception as e:
         logger.error(f"Database error in submit: {e}")
         await message.answer("❌ 系统错误，请稍后重试")

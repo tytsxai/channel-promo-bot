@@ -219,6 +219,24 @@ async def test_cmd_submit_duplicate(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cmd_submit_duplicate_on_insert(monkeypatch):
+    async def fake_exists(chat_id: str):
+        return False
+
+    async def fake_add(**kwargs):
+        return None
+
+    monkeypatch.setattr(user_handlers.ChannelService, "channel_exists", fake_exists)
+    monkeypatch.setattr(user_handlers.ChannelService, "add_channel", fake_add)
+
+    msg = DummyMessage()
+    cmd = DummyCommand(args="@testchannel")
+    bot = DummyBot()
+    await user_handlers.cmd_submit(msg, cmd, bot)
+    assert "已提交过" in msg.answers[0]["text"]
+
+
+@pytest.mark.asyncio
 async def test_cmd_submit_success(monkeypatch):
     calls = {"added": False}
 
