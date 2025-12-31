@@ -75,6 +75,25 @@ async def _validate_bot(bot: Bot) -> None:
     logger.info("Bot identity verified: id=%s username=@%s", me.id, me.username or "")
 
 
+async def _sync_bot_profile(bot: Bot) -> None:
+    if not config.bot_description and not config.bot_short_description:
+        return
+
+    if config.bot_description:
+        try:
+            await bot.set_my_description(config.bot_description)
+            logger.info("Bot description updated")
+        except Exception:
+            logger.exception("Failed to update bot description")
+
+    if config.bot_short_description:
+        try:
+            await bot.set_my_short_description(config.bot_short_description)
+            logger.info("Bot short description updated")
+        except Exception:
+            logger.exception("Failed to update bot short description")
+
+
 async def scheduled_promo(bot: Bot):
     try:
         logger.info("Starting scheduled promo broadcast...")
@@ -94,6 +113,7 @@ async def main():
     bot = Bot(token=config.bot_token)
     try:
         await _validate_bot(bot)
+        await _sync_bot_profile(bot)
     except Exception:
         with contextlib.suppress(Exception):
             await bot.session.close()

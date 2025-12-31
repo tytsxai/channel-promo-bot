@@ -82,6 +82,8 @@ def _get_log_level(value: str) -> str:
 class Config:
     bot_token: str
     admin_ids: list[int]
+    bot_description: str | None
+    bot_short_description: str | None
     openai_api_key: str
     openai_model: str
     openai_base_url: str | None
@@ -118,6 +120,8 @@ class Config:
         return cls(
             bot_token=bot_token,
             admin_ids=admin_ids,
+            bot_description=_get_optional_str("BOT_DESCRIPTION"),
+            bot_short_description=_get_optional_str("BOT_SHORT_DESCRIPTION"),
             openai_api_key=_get_str("OPENAI_API_KEY"),
             openai_model=_get_str("OPENAI_MODEL", "gpt-3.5-turbo"),
             openai_base_url=_get_optional_str("OPENAI_BASE_URL"),

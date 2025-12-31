@@ -52,6 +52,10 @@ BOT_TOKEN=your_bot_token_here
 # 管理员用户ID列表 (逗号分隔)
 ADMIN_IDS=123456789,987654321
 
+# 机器人简介（显示在机器人资料页，可选）
+# BOT_DESCRIPTION=
+# BOT_SHORT_DESCRIPTION=
+
 # OpenAI API Key (用于AI分类，可选)
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-3.5-turbo
