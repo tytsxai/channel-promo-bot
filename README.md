@@ -98,6 +98,13 @@ source .venv/bin/activate
 python main.py
 ```
 
+## 机器人头像（可选）
+
+仓库内置了一个示例头像：`docs/assets/bot_avatar.jpg`。你可以在 BotFather 中使用 `/setuserpic` 为机器人设置头像，
+也可以替换该文件为你自己的图片（建议正方形尺寸，清晰度更好）。
+
+![Bot Avatar](docs/assets/bot_avatar.jpg)
+
 ## 命令列表
 
 ### 用户命令
