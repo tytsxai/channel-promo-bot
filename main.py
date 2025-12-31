@@ -5,6 +5,7 @@ import signal
 from datetime import UTC
 
 from aiogram import Bot, Dispatcher
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     BotCommand,
     BotCommandScopeAllPrivateChats,
@@ -135,6 +136,14 @@ async def _sync_bot_commands(bot: Bot) -> None:
             await bot.set_my_commands(
                 admin_commands, scope=BotCommandScopeChat(chat_id=admin_id)
             )
+        except TelegramBadRequest as exc:
+            if "chat not found" in str(exc).lower():
+                logger.warning(
+                    "Skip admin commands for %s: chat not found (admin未与机器人对话)",
+                    admin_id,
+                )
+                continue
+            logger.exception("Failed to update admin commands for %s", admin_id)
         except Exception:
             logger.exception("Failed to update admin commands for %s", admin_id)
     logger.info("Bot commands updated for admin chats")
