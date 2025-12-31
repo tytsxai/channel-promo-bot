@@ -5,6 +5,12 @@ import signal
 from datetime import UTC
 
 from aiogram import Bot, Dispatcher
+from aiogram.types import (
+    BotCommand,
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat,
+    BotCommandScopeDefault,
+)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.config import config
@@ -94,6 +100,46 @@ async def _sync_bot_profile(bot: Bot) -> None:
             logger.exception("Failed to update bot short description")
 
 
+def _build_user_commands() -> list[BotCommand]:
+    return [
+        BotCommand(command="start", description="开始使用"),
+        BotCommand(command="help", description="查看帮助"),
+        BotCommand(command="submit", description="提交频道参与互推"),
+        BotCommand(command="list", description="查看已通过频道"),
+    ]
+
+
+def _build_admin_commands() -> list[BotCommand]:
+    return _build_user_commands() + [
+        BotCommand(command="pending", description="查看待审核频道"),
+        BotCommand(command="stats", description="查看系统统计"),
+    ]
+
+
+async def _sync_bot_commands(bot: Bot) -> None:
+    user_commands = _build_user_commands()
+    admin_commands = _build_admin_commands()
+
+    try:
+        await bot.set_my_commands(user_commands, scope=BotCommandScopeAllPrivateChats())
+        await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
+        logger.info("Bot commands updated for private chats")
+    except Exception:
+        logger.exception("Failed to update bot commands for private chats")
+
+    if not config.admin_ids:
+        return
+
+    for admin_id in config.admin_ids:
+        try:
+            await bot.set_my_commands(
+                admin_commands, scope=BotCommandScopeChat(chat_id=admin_id)
+            )
+        except Exception:
+            logger.exception("Failed to update admin commands for %s", admin_id)
+    logger.info("Bot commands updated for admin chats")
+
+
 async def scheduled_promo(bot: Bot):
     try:
         logger.info("Starting scheduled promo broadcast...")
@@ -114,6 +160,7 @@ async def main():
     try:
         await _validate_bot(bot)
         await _sync_bot_profile(bot)
+        await _sync_bot_commands(bot)
     except Exception:
         with contextlib.suppress(Exception):
             await bot.session.close()
