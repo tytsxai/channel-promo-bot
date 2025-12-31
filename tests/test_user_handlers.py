@@ -18,6 +18,10 @@ class TestExtractUsername:
     def test_plain_username(self):
         assert _extract_username("testchannel") == "testchannel"
 
+    def test_link_inside_text(self):
+        text = "Heisenberg, [2:32 AM]\\nhttps://t.me/moyingnet"
+        assert _extract_username(text) == "moyingnet"
+
     def test_invalid_short(self):
         assert _extract_username("ab") is None
 
@@ -49,8 +53,9 @@ class TestGetHelpText:
 
 
 class DummyUser:
-    def __init__(self, user_id: int):
+    def __init__(self, user_id: int, username: str | None = None):
         self.id = user_id
+        self.username = username
 
 
 class DummyMessage:
@@ -84,16 +89,19 @@ class DummyBot:
     def __init__(
         self,
         member_status: str = "administrator",
+        bot_status: str = "administrator",
         member_count: int = 800,
         raise_on_chat: bool = False,
         raise_on_member: bool = False,
         raise_on_count: bool = False,
     ):
         self.member_status = member_status
+        self.bot_status = bot_status
         self.member_count = member_count
         self.raise_on_chat = raise_on_chat
         self.raise_on_member = raise_on_member
         self.raise_on_count = raise_on_count
+        self.bot_id = 999
 
     async def get_chat(self, username: str):
         if self.raise_on_chat:
@@ -101,14 +109,18 @@ class DummyBot:
         return DummyChat(chat_id=-100123, title="Test_Channel")
 
     async def get_chat_member(self, chat_id: int, user_id: int):
-        if self.raise_on_member:
+        if self.raise_on_member and user_id != self.bot_id:
             raise RuntimeError("member error")
-        return DummyMember(status=self.member_status)
+        status = self.bot_status if user_id == self.bot_id else self.member_status
+        return DummyMember(status=status)
 
     async def get_chat_member_count(self, chat_id: int):
         if self.raise_on_count:
             raise RuntimeError("count error")
         return self.member_count
+
+    async def get_me(self):
+        return DummyUser(self.bot_id, username="test_bot")
 
 
 @pytest.mark.asyncio
@@ -117,17 +129,18 @@ async def test_cmd_submit_missing_args():
     cmd = DummyCommand(args=None)
     bot = DummyBot()
     await user_handlers.cmd_submit(msg, cmd, bot)
-    assert "请提供频道链接" in msg.answers[0]["text"]
+    assert "请直接发送频道链接" in msg.answers[0]["text"]
 
 
 @pytest.mark.asyncio
 async def test_cmd_start_and_help():
     msg = DummyMessage()
-    await user_handlers.cmd_start(msg)
+    bot = DummyBot()
+    await user_handlers.cmd_start(msg, bot)
     assert "欢迎使用互推机器人" in msg.answers[0]["text"]
 
     msg = DummyMessage()
-    await user_handlers.cmd_help(msg)
+    await user_handlers.cmd_help(msg, bot)
     assert "/submit" in msg.answers[0]["text"]
     assert msg.answers[0]["parse_mode"] == "Markdown"
 
@@ -138,7 +151,7 @@ async def test_cmd_submit_invalid_link():
     cmd = DummyCommand(args="ab")
     bot = DummyBot()
     await user_handlers.cmd_submit(msg, cmd, bot)
-    assert "无效的频道链接格式" in msg.answers[0]["text"]
+    assert "无法识别频道链接" in msg.answers[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -147,7 +160,7 @@ async def test_cmd_submit_get_chat_failure():
     cmd = DummyCommand(args="@testchannel")
     bot = DummyBot(raise_on_chat=True)
     await user_handlers.cmd_submit(msg, cmd, bot)
-    assert "无法获取频道信息" in msg.answers[0]["text"]
+    assert "无法获取频道" in msg.answers[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -156,7 +169,7 @@ async def test_cmd_submit_get_chat_member_failure():
     cmd = DummyCommand(args="@testchannel")
     bot = DummyBot(raise_on_member=True)
     await user_handlers.cmd_submit(msg, cmd, bot)
-    assert "无法验证你是否为频道管理员" in msg.answers[0]["text"]
+    assert "无法验证你的管理员身份" in msg.answers[0]["text"]
 
 
 @pytest.mark.asyncio

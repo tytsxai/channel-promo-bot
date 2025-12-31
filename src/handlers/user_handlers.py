@@ -1,6 +1,5 @@
 import logging
 import re
-from urllib.parse import urlparse
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
@@ -16,6 +15,15 @@ router = Router()
 # 临时存储待确认的频道信息 {user_id: {username, chat_id, title, member_count}}
 _pending_submissions: dict[int, dict] = {}
 
+_USERNAME_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9_]{3,31}")
+_AT_USERNAME_RE = re.compile(r"(?<![\\w@])@([a-zA-Z][a-zA-Z0-9_]{3,31})")
+_TME_USERNAME_RE = re.compile(
+    r"(?i)(?:https?://)?(?:t\\.me|telegram\\.me)/([a-zA-Z][a-zA-Z0-9_]{3,31})"
+)
+_INVITE_LINK_RE = re.compile(
+    r"(?i)(?:https?://)?(?:t\\.me|telegram\\.me)/(?:joinchat/|\\+)"
+)
+
 
 def get_help_text(bot_username: str = "") -> str:
     beijing_hour = (config.promo_hour_utc + 8) % 24
@@ -26,6 +34,7 @@ def get_help_text(bot_username: str = "") -> str:
 1️⃣ 直接发送频道链接（如 t.me/yourchannel）
 2️⃣ 按提示将 {bot_link} 添加为频道管理员
 3️⃣ 点击「已添加，验证」完成提交
+（若链接无法识别，可转发频道任意一条消息给机器人）
 
 **命令列表：**
 /start - 开始使用
@@ -74,29 +83,40 @@ async def cmd_submit(message: Message, command: CommandObject, bot: Bot) -> None
 
 def _extract_username(text: str) -> str | None:
     cleaned = text.strip()
-    if cleaned.startswith("@"):
-        cleaned = cleaned[1:]
-
-    username = cleaned
-    if cleaned.startswith(("http://", "https://")):
-        parsed = urlparse(cleaned)
-        if parsed.netloc not in {"t.me", "telegram.me"}:
-            return None
-        username = parsed.path.lstrip("/").split("/")[0]
-    elif cleaned.startswith("t.me/"):
-        username = cleaned.replace("t.me/", "", 1).split("/")[0]
-
-    username = username.split("?")[0].split("#")[0]
-    if not username:
+    if not cleaned:
         return None
 
-    match = re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_]{3,31}", username)
-    return match.group(0) if match else None
+    if re.fullmatch(_USERNAME_RE, cleaned):
+        return cleaned
+
+    match = _AT_USERNAME_RE.search(cleaned)
+    if match:
+        return match.group(1)
+
+    match = _TME_USERNAME_RE.search(cleaned)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def _contains_invite_link(text: str) -> bool:
+    return _INVITE_LINK_RE.search(text) is not None
 
 
 async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
     """处理用户发送的频道链接"""
     user_id = message.from_user.id
+
+    if _contains_invite_link(text):
+        await message.answer(
+            "❌ 检测到私密邀请链接，暂不支持。\n\n"
+            "请使用公开频道链接：\n"
+            "• t.me/yourchannel\n"
+            "• @yourchannel"
+        )
+        return
+
     username = _extract_username(text)
 
     if not username:
@@ -105,9 +125,13 @@ async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
             "请发送正确的格式：\n"
             "• t.me/yourchannel\n"
             "• @yourchannel\n"
-            "• https://t.me/yourchannel"
+            "• https://t.me/yourchannel\n"
+            "（若链接无法识别，可转发频道任意一条消息）"
         )
         return
+
+    me = await bot.get_me()
+    bot_username = me.username or ""
 
     # 检查是否已提交过
     try:
@@ -116,17 +140,28 @@ async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
             await message.answer("⚠️ 该频道已提交过，请勿重复提交")
             return
     except Exception as e:
-        logger.warning(f"Failed to get chat @{username}: {e}")
+        logger.warning("Failed to get chat @%s: %s", username, e)
+        _pending_submissions[user_id] = {"username": username}
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="✅ 已添加，验证",
+                callback_data=f"verify:{username}"
+            )],
+            [InlineKeyboardButton(
+                text="❌ 取消",
+                callback_data="cancel_submit"
+            )]
+        ])
         await message.answer(
             f"❌ 无法获取频道 @{username} 的信息\n\n"
             "请确保：\n"
             "• 频道链接正确\n"
-            "• 频道是公开的"
+            "• 频道是公开的\n"
+            "• 机器人已加入频道并具备管理员权限\n\n"
+            "如仍失败，请转发频道任意一条消息给机器人。",
+            reply_markup=keyboard
         )
         return
-
-    me = await bot.get_me()
-    bot_username = me.username
 
     # 检查机器人是否已在频道中
     try:
@@ -140,7 +175,11 @@ async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
         await _verify_and_submit(message, chat, username, user_id, bot)
     else:
         # 机器人不在频道，引导用户添加
-        _pending_submissions[user_id] = {"username": username, "chat_id": chat.id}
+        _pending_submissions[user_id] = {
+            "username": username,
+            "chat_id": chat.id,
+            "title": chat.title,
+        }
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
@@ -234,9 +273,17 @@ async def callback_verify(callback: CallbackQuery, bot: Bot) -> None:
     username = callback.data.split(":", 1)[1]
 
     try:
-        chat = await bot.get_chat(f"@{username}")
-    except Exception:
-        await callback.answer("❌ 频道不存在", show_alert=True)
+        pending = _pending_submissions.get(user_id, {})
+        chat_id = pending.get("chat_id")
+        if chat_id:
+            chat = await bot.get_chat(chat_id)
+        else:
+            chat = await bot.get_chat(f"@{username}")
+    except Exception as e:
+        logger.warning("Verify failed to get chat @%s: %s", username, e)
+        await callback.answer(
+            "❌ 无法获取频道信息，请确认机器人已加入频道后重试", show_alert=True
+        )
         return
 
     # 检查机器人是否已添加
@@ -280,12 +327,83 @@ async def callback_cancel(callback: CallbackQuery) -> None:
 
 
 # 处理直接发送的链接消息
+@router.message(F.forward_from_chat)
+async def handle_forwarded_channel(message: Message, bot: Bot) -> None:
+    chat = message.forward_from_chat
+    if not chat or chat.type != "channel":
+        return
+
+    if not chat.username:
+        await message.answer(
+            "❌ 该频道没有公开用户名，暂不支持。\n\n"
+            "请将频道设置为公开并提供 @username。"
+        )
+        return
+
+    user_id = message.from_user.id
+
+    if await ChannelService.channel_exists(str(chat.id)):
+        await message.answer("⚠️ 该频道已提交过，请勿重复提交")
+        return
+
+    me = await bot.get_me()
+    bot_username = me.username or ""
+
+    try:
+        bot_member = await bot.get_chat_member(chat.id, me.id)
+        bot_in_channel = bot_member.status in ("administrator", "creator")
+    except Exception:
+        bot_in_channel = False
+
+    if bot_in_channel:
+        await _verify_and_submit(message, chat, chat.username, user_id, bot)
+        return
+
+    _pending_submissions[user_id] = {
+        "username": chat.username,
+        "chat_id": chat.id,
+        "title": chat.title,
+    }
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="✅ 已添加，验证",
+            callback_data=f"verify:{chat.username}"
+        )],
+        [InlineKeyboardButton(
+            text="❌ 取消",
+            callback_data="cancel_submit"
+        )]
+    ])
+
+    await message.answer(
+        f"📢 频道: **{chat.title}**\n\n"
+        f"请先将 @{bot_username} 添加为频道管理员：\n\n"
+        "1️⃣ 打开频道设置\n"
+        "2️⃣ 点击「管理员」\n"
+        "3️⃣ 添加管理员 → 搜索 @" + bot_username + "\n"
+        "4️⃣ 授予「发送消息」权限\n"
+        "5️⃣ 点击下方按钮验证\n",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_text_message(message: Message, bot: Bot) -> None:
     """处理用户直接发送的文本（可能是频道链接）"""
     text = message.text.strip()
 
     # 检查是否像频道链接
+    if _contains_invite_link(text):
+        await message.answer(
+            "❌ 检测到私密邀请链接，暂不支持。\n\n"
+            "请使用公开频道链接：\n"
+            "• t.me/yourchannel\n"
+            "• @yourchannel"
+        )
+        return
+
     if _extract_username(text):
         await _handle_channel_link(message, text, bot)
 
