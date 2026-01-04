@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
@@ -12,17 +13,37 @@ from src.utils import escape_markdown
 logger = logging.getLogger(__name__)
 router = Router()
 
-# 临时存储待确认的频道信息 {user_id: {username, chat_id, title, member_count}}
+# 临时存储待确认的频道信息（仅内存，不持久化）。
+# 键为 user_id，值包含 username/chat_id/title/created_at，用于“已添加，验证”流程。
 _pending_submissions: dict[int, dict] = {}
+_PENDING_TTL_SECONDS = 60 * 60  # 1 小时未完成的提交自动过期
 
+# 仅匹配 Telegram 公共用户名（不含 @ 前缀）
 _USERNAME_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9_]{3,31}")
-_AT_USERNAME_RE = re.compile(r"(?<![\\w@])@([a-zA-Z][a-zA-Z0-9_]{3,31})")
+_AT_USERNAME_RE = re.compile(r"(?<![\w@])@([a-zA-Z][a-zA-Z0-9_]{3,31})")
 _TME_USERNAME_RE = re.compile(
-    r"(?i)(?:https?://)?(?:t\\.me|telegram\\.me)/([a-zA-Z][a-zA-Z0-9_]{3,31})"
+    r"(?i)(?:https?://)?(?:t\.me|telegram\.me)/([a-zA-Z][a-zA-Z0-9_]{3,31})"
 )
 _INVITE_LINK_RE = re.compile(
-    r"(?i)(?:https?://)?(?:t\\.me|telegram\\.me)/(?:joinchat/|\\+)"
+    r"(?i)(?:https?://)?(?:t\.me|telegram\.me)/(?:joinchat/|\+)"
 )
+
+
+def _cleanup_pending_submissions(now: float) -> None:
+    if not _pending_submissions:
+        return
+    stale_users = [
+        uid
+        for uid, info in _pending_submissions.items()
+        if now - info.get("created_at", now) > _PENDING_TTL_SECONDS
+    ]
+    for uid in stale_users:
+        _pending_submissions.pop(uid, None)
+
+
+def _set_pending_submission(user_id: int, **payload: object) -> None:
+    payload["created_at"] = time.time()
+    _pending_submissions[user_id] = payload
 
 
 def get_help_text(bot_username: str = "") -> str:
@@ -38,6 +59,7 @@ def get_help_text(bot_username: str = "") -> str:
 
 **命令列表：**
 /start - 开始使用
+/submit - 提交频道参与互推
 /list - 查看已通过审核的频道列表
 /help - 查看帮助
 
@@ -107,6 +129,7 @@ def _contains_invite_link(text: str) -> bool:
 async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
     """处理用户发送的频道链接"""
     user_id = message.from_user.id
+    _cleanup_pending_submissions(time.time())
 
     if _contains_invite_link(text):
         await message.answer(
@@ -136,12 +159,15 @@ async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
     # 检查是否已提交过
     try:
         chat = await bot.get_chat(f"@{username}")
+        if chat.type != "channel":
+            await message.answer("❌ 该链接不是频道，请提交频道链接")
+            return
         if await ChannelService.channel_exists(str(chat.id)):
             await message.answer("⚠️ 该频道已提交过，请勿重复提交")
             return
     except Exception as e:
         logger.warning("Failed to get chat @%s: %s", username, e)
-        _pending_submissions[user_id] = {"username": username}
+        _set_pending_submission(user_id, username=username)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text="✅ 已添加，验证",
@@ -175,11 +201,12 @@ async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
         await _verify_and_submit(message, chat, username, user_id, bot)
     else:
         # 机器人不在频道，引导用户添加
-        _pending_submissions[user_id] = {
-            "username": username,
-            "chat_id": chat.id,
-            "title": chat.title,
-        }
+        _set_pending_submission(
+            user_id,
+            username=username,
+            chat_id=chat.id,
+            title=chat.title,
+        )
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
@@ -207,8 +234,11 @@ async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
 
 async def _verify_and_submit(
     message: Message, chat, username: str, user_id: int, bot: Bot
-) -> None:
-    """验证用户身份并提交频道"""
+) -> bool:
+    """验证用户身份并提交频道，成功返回 True。"""
+    if getattr(chat, "type", None) != "channel":
+        await message.answer("❌ 仅支持频道提交，请发送频道链接")
+        return False
     # 验证用户是否为管理员
     try:
         member = await bot.get_chat_member(chat.id, user_id)
@@ -218,11 +248,11 @@ async def _verify_and_submit(
             "❌ 无法验证你的管理员身份\n\n"
             "请确保你是该频道的管理员"
         )
-        return
+        return False
 
     if member.status not in ("administrator", "creator"):
         await message.answer("❌ 仅频道管理员可以提交该频道")
-        return
+        return False
 
     # 获取成员数
     try:
@@ -230,7 +260,7 @@ async def _verify_and_submit(
     except Exception as e:
         logger.warning(f"Failed to get member count for {chat.id}: {e}")
         await message.answer("❌ 无法获取频道成员数")
-        return
+        return False
 
     if member_count < config.min_members:
         await message.answer(
@@ -238,7 +268,7 @@ async def _verify_and_submit(
             f"当前: {member_count} 人\n"
             f"要求: ≥ {config.min_members} 人"
         )
-        return
+        return False
 
     # 保存到数据库
     try:
@@ -251,11 +281,11 @@ async def _verify_and_submit(
         )
         if channel_id is None:
             await message.answer("⚠️ 该频道已提交过，请勿重复提交")
-            return
+            return True
     except Exception as e:
         logger.error(f"Database error in submit: {e}")
         await message.answer("❌ 系统错误，请稍后重试")
-        return
+        return False
 
     logger.info(f"Channel submitted: {username} by user {user_id}")
     await message.answer(
@@ -264,6 +294,7 @@ async def _verify_and_submit(
         f"👥 成员数: {member_count}\n\n"
         "请等待管理员审核，审核通过后将加入互推列表。"
     )
+    return True
 
 
 @router.callback_query(F.data.startswith("verify:"))
@@ -271,6 +302,7 @@ async def callback_verify(callback: CallbackQuery, bot: Bot) -> None:
     """处理验证回调"""
     user_id = callback.from_user.id
     username = callback.data.split(":", 1)[1]
+    _cleanup_pending_submissions(time.time())
 
     try:
         pending = _pending_submissions.get(user_id, {})
@@ -284,6 +316,9 @@ async def callback_verify(callback: CallbackQuery, bot: Bot) -> None:
         await callback.answer(
             "❌ 无法获取频道信息，请确认机器人已加入频道后重试", show_alert=True
         )
+        return
+    if getattr(chat, "type", None) != "channel":
+        await callback.answer("❌ 仅支持频道提交", show_alert=True)
         return
 
     # 检查机器人是否已添加
@@ -302,22 +337,24 @@ async def callback_verify(callback: CallbackQuery, bot: Bot) -> None:
         return
 
     await callback.answer("验证中...")
-    await _verify_and_submit(callback.message, chat, username, user_id, bot)
+    success = await _verify_and_submit(callback.message, chat, username, user_id, bot)
 
-    # 清理待确认数据
-    _pending_submissions.pop(user_id, None)
+    if success:
+        # 清理待确认数据
+        _pending_submissions.pop(user_id, None)
 
-    # 删除引导消息
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
+        # 删除引导消息
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data == "cancel_submit")
 async def callback_cancel(callback: CallbackQuery) -> None:
     """取消提交"""
     user_id = callback.from_user.id
+    _cleanup_pending_submissions(time.time())
     _pending_submissions.pop(user_id, None)
     await callback.answer("已取消")
     try:
@@ -332,6 +369,7 @@ async def handle_forwarded_channel(message: Message, bot: Bot) -> None:
     chat = message.forward_from_chat
     if not chat or chat.type != "channel":
         return
+    _cleanup_pending_submissions(time.time())
 
     if not chat.username:
         await message.answer(
@@ -359,11 +397,12 @@ async def handle_forwarded_channel(message: Message, bot: Bot) -> None:
         await _verify_and_submit(message, chat, chat.username, user_id, bot)
         return
 
-    _pending_submissions[user_id] = {
-        "username": chat.username,
-        "chat_id": chat.id,
-        "title": chat.title,
-    }
+    _set_pending_submission(
+        user_id,
+        username=chat.username,
+        chat_id=chat.id,
+        title=chat.title,
+    )
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
