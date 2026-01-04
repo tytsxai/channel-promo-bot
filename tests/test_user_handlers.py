@@ -75,9 +75,10 @@ class DummyCommand:
 
 
 class DummyChat:
-    def __init__(self, chat_id: int, title: str):
+    def __init__(self, chat_id: int, title: str, chat_type: str = "channel"):
         self.id = chat_id
         self.title = title
+        self.type = chat_type
 
 
 class DummyMember:
@@ -91,6 +92,7 @@ class DummyBot:
         member_status: str = "administrator",
         bot_status: str = "administrator",
         member_count: int = 800,
+        chat_type: str = "channel",
         raise_on_chat: bool = False,
         raise_on_member: bool = False,
         raise_on_count: bool = False,
@@ -98,6 +100,7 @@ class DummyBot:
         self.member_status = member_status
         self.bot_status = bot_status
         self.member_count = member_count
+        self.chat_type = chat_type
         self.raise_on_chat = raise_on_chat
         self.raise_on_member = raise_on_member
         self.raise_on_count = raise_on_count
@@ -106,7 +109,7 @@ class DummyBot:
     async def get_chat(self, username: str):
         if self.raise_on_chat:
             raise RuntimeError("chat error")
-        return DummyChat(chat_id=-100123, title="Test_Channel")
+        return DummyChat(chat_id=-100123, title="Test_Channel", chat_type=self.chat_type)
 
     async def get_chat_member(self, chat_id: int, user_id: int):
         if self.raise_on_member and user_id != self.bot_id:
@@ -164,7 +167,11 @@ async def test_cmd_submit_get_chat_failure():
 
 
 @pytest.mark.asyncio
-async def test_cmd_submit_get_chat_member_failure():
+async def test_cmd_submit_get_chat_member_failure(monkeypatch):
+    async def fake_exists(chat_id: str):
+        return False
+
+    monkeypatch.setattr(user_handlers.ChannelService, "channel_exists", fake_exists)
     msg = DummyMessage()
     cmd = DummyCommand(args="@testchannel")
     bot = DummyBot(raise_on_member=True)
@@ -173,12 +180,29 @@ async def test_cmd_submit_get_chat_member_failure():
 
 
 @pytest.mark.asyncio
-async def test_cmd_submit_get_member_count_failure():
+async def test_cmd_submit_get_member_count_failure(monkeypatch):
+    async def fake_exists(chat_id: str):
+        return False
+
+    monkeypatch.setattr(user_handlers.ChannelService, "channel_exists", fake_exists)
     msg = DummyMessage()
     cmd = DummyCommand(args="@testchannel")
     bot = DummyBot(raise_on_count=True)
     await user_handlers.cmd_submit(msg, cmd, bot)
     assert "无法获取频道成员数" in msg.answers[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_cmd_submit_rejects_non_channel(monkeypatch):
+    async def fake_exists(chat_id: str):
+        return False
+
+    monkeypatch.setattr(user_handlers.ChannelService, "channel_exists", fake_exists)
+    msg = DummyMessage()
+    cmd = DummyCommand(args="@testchannel")
+    bot = DummyBot(chat_type="group")
+    await user_handlers.cmd_submit(msg, cmd, bot)
+    assert "不是频道" in msg.answers[0]["text"]
 
 
 @pytest.mark.asyncio
