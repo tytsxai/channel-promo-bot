@@ -4,7 +4,7 @@
 
 ## 功能特性
 
-- **频道提交**: 用户可提交频道参与互推
+- **频道提交**: 用户可直接发送链接或转发消息提交频道
 - **管理员审核**: 支持分页浏览和一键审核
 - **AI 分类**: 使用 OpenAI 自动对频道进行分类
 - **定时推送**: 每日定时向所有参与频道发送互推文案
@@ -70,11 +70,21 @@ DATABASE_PATH=data/bot.db
 # 定时推送时间 (UTC时区)
 PROMO_HOUR_UTC=5
 PROMO_MINUTE=0
+# 定时推送并发与节流配置
+PROMO_CONCURRENCY=5
+PROMO_SEND_INTERVAL=0.05
+# 多实例下使用数据库分布式锁避免重复推送
+PROMO_LOCK_ENABLED=true
+PROMO_LOCK_TTL=3600
+# 推送读取分页大小
+PROMO_BATCH_SIZE=500
 
 # 速率限制配置
 RATE_LIMIT=10
 RATE_LIMIT_WINDOW=60
 RATE_LIMIT_CLEANUP=300
+# 速率限制存储方式 (memory | sqlite)
+RATE_LIMIT_STORAGE=sqlite
 
 # 日志配置
 LOG_LEVEL=INFO
@@ -120,7 +130,7 @@ python main.py
 | `/submit <频道链接>` | 提交频道参与互推 |
 | `/list` | 查看已通过审核的频道列表 |
 
-> 提示：提交者需为频道管理员或创建者，机器人需加入频道并具备权限（建议设为管理员）。
+> 提示：推荐直接发送频道链接（如 `t.me/yourchannel`）或转发频道消息，无需使用命令。提交者需为频道管理员或创建者，机器人需加入频道并具备权限（建议设为管理员）。
 
 ### 管理员命令
 

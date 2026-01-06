@@ -17,6 +17,8 @@
 class Config:
     bot_token: str        # Telegram Bot Token
     admin_ids: list[int]  # 管理员用户ID列表
+    bot_description: str | None      # 机器人简介（可选）
+    bot_short_description: str | None # 机器人短简介（可选）
     openai_api_key: str   # OpenAI API密钥
     openai_model: str     # OpenAI 模型名称
     openai_base_url: str | None  # OpenAI API Base URL
@@ -24,9 +26,15 @@ class Config:
     database_path: str    # 数据库文件路径
     promo_hour_utc: int   # 推送小时 (UTC)
     promo_minute: int     # 推送分钟
+    promo_concurrency: int  # 推送并发数
+    promo_send_interval: float  # 推送间隔(秒)
+    promo_lock_enabled: bool  # 是否启用分布式锁
+    promo_lock_ttl: int    # 锁过期时间(秒)
+    promo_batch_size: int  # 推送分页大小
     rate_limit: int       # 速率限制次数
     rate_limit_window: int  # 速率限制窗口(秒)
     rate_limit_cleanup: int # 速率记录清理间隔(秒)
+    rate_limit_storage: str # 速率限制存储方式
     log_level: str        # 日志级别
     log_format: str       # 日志格式(text/json)
     log_file: str | None  # 日志文件路径
@@ -49,6 +57,8 @@ class Config:
 |--------|------|--------|------|
 | `BOT_TOKEN` | 是 | - | Telegram Bot Token |
 | `ADMIN_IDS` | 是 | - | 管理员ID，逗号分隔 |
+| `BOT_DESCRIPTION` | 否 | - | 机器人简介（显示在资料页） |
+| `BOT_SHORT_DESCRIPTION` | 否 | - | 机器人短简介 |
 | `OPENAI_API_KEY` | 否 | `""` | OpenAI API密钥 |
 | `OPENAI_MODEL` | 否 | `gpt-3.5-turbo` | OpenAI 模型名称 |
 | `OPENAI_BASE_URL` | 否 | - | OpenAI API Base URL |
@@ -56,9 +66,15 @@ class Config:
 | `DATABASE_PATH` | 否 | `data/bot.db` | 数据库路径 |
 | `PROMO_HOUR_UTC` | 否 | `5` | 推送小时 (0-23) |
 | `PROMO_MINUTE` | 否 | `0` | 推送分钟 (0-59) |
+| `PROMO_CONCURRENCY` | 否 | `5` | 推送并发数 |
+| `PROMO_SEND_INTERVAL` | 否 | `0.05` | 推送间隔(秒) |
+| `PROMO_LOCK_ENABLED` | 否 | `true` | 是否启用分布式锁 |
+| `PROMO_LOCK_TTL` | 否 | `3600` | 锁过期时间(秒) |
+| `PROMO_BATCH_SIZE` | 否 | `500` | 推送分页大小 |
 | `RATE_LIMIT` | 否 | `10` | 速率限制次数 |
 | `RATE_LIMIT_WINDOW` | 否 | `60` | 速率限制窗口 |
 | `RATE_LIMIT_CLEANUP` | 否 | `300` | 速率记录清理间隔 |
+| `RATE_LIMIT_STORAGE` | 否 | `sqlite` | 速率限制存储方式 |
 | `LOG_LEVEL` | 否 | `INFO` | 日志级别 |
 | `LOG_FORMAT` | 否 | `text` | 日志格式 |
 | `LOG_FILE` | 否 | - | 日志文件路径 |
@@ -107,6 +123,31 @@ async def init_db() -> None
 **索引**
 - `idx_channels_status` - 状态索引
 - `idx_channels_category` - 分类索引
+
+**pending_submissions 表**
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `user_id` | INTEGER | PRIMARY KEY | 提交者用户ID |
+| `username` | TEXT | NOT NULL | 频道用户名 |
+| `chat_id` | TEXT | - | 频道ID |
+| `title` | TEXT | - | 频道标题 |
+| `created_at` | REAL | NOT NULL | 提交时间戳 |
+
+**rate_limit_requests 表**
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `user_id` | INTEGER | NOT NULL | 用户ID |
+| `ts` | REAL | NOT NULL | 请求时间戳 |
+
+**distributed_locks 表**
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `name` | TEXT | PRIMARY KEY | 锁名称 |
+| `owner` | TEXT | NOT NULL | 锁持有者 |
+| `expires_at` | REAL | NOT NULL | 过期时间戳 |
 
 #### 迁移机制
 
@@ -221,7 +262,7 @@ async def send_promo_to_all(bot: Bot) -> tuple[int, int]
 
 ```python
 class RateLimitMiddleware(BaseMiddleware):
-    def __init__(self, limit: int = 5, window: int = 60, cleanup_interval: int = 300)
+    def __init__(self, limit: int = 5, window: int = 60, cleanup_interval: int = 300, storage: str = "memory")
 ```
 
 #### 参数
@@ -231,6 +272,7 @@ class RateLimitMiddleware(BaseMiddleware):
 | `limit` | 5 | 时间窗口内最大请求数 |
 | `window` | 60 | 时间窗口（秒） |
 | `cleanup_interval` | 300 | 清理过期记录间隔（秒） |
+| `storage` | "memory" | 速率限制存储方式（memory/sqlite） |
 
 ---
 
@@ -248,9 +290,49 @@ def escape_markdown(text: str) -> str
 
 `_ * [ ] ( ) ~ \` > # + = | { } . ! -`
 
+### LineChunker
+
+增量构建消息分片，避免超出 Telegram 消息长度限制。
+
+```python
+class LineChunker:
+    def __init__(self, limit: int)
+    def add_line(self, line: str) -> list[str]
+    def flush(self) -> list[str]
+```
+
+### chunk_lines()
+
+批量分片工具，适合一次性列表输出。
+
+```python
+def chunk_lines(lines: list[str], limit: int) -> list[str]
+```
+
 ---
 
 ## 8. 日志配置 (src/logging_setup.py)
+
+### JsonFormatter 类
+
+JSON 格式日志格式化器，继承自 `logging.Formatter`。
+
+```python
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str
+```
+
+#### 输出格式
+
+```json
+{
+    "timestamp": "2024-01-01T12:00:00+00:00",
+    "level": "INFO",
+    "logger": "src.services.channel_service",
+    "message": "Channel submitted",
+    "exc_info": "..."  // 可选，仅在有异常时出现
+}
+```
 
 ### configure_logging()
 
@@ -259,6 +341,13 @@ def escape_markdown(text: str) -> str
 ```python
 def configure_logging(config: Config) -> None
 ```
+
+#### 功能
+
+- 配置 stdout 流处理器
+- 可选配置滚动文件处理器（RotatingFileHandler）
+- 根据 `config.log_format` 选择文本或 JSON 格式
+- 调用 `logging.captureWarnings(True)` 捕获 Python warnings
 
 ---
 

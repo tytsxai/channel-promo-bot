@@ -5,7 +5,7 @@
 __pycache__/
 *.pyc
 *.pyo
-.venv/
+.venv*/
 venv/
 
 # 数据文件

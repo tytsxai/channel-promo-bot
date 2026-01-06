@@ -36,6 +36,8 @@ cp .env.example .env
 |------|------|------|
 | `BOT_TOKEN` | 是 | 从 @BotFather 获取 |
 | `ADMIN_IDS` | 是 | 管理员ID，逗号分隔 |
+| `BOT_DESCRIPTION` | 否 | 机器人简介（显示在资料页） |
+| `BOT_SHORT_DESCRIPTION` | 否 | 机器人短简介 |
 | `OPENAI_API_KEY` | 否 | AI分类功能 |
 | `OPENAI_MODEL` | 否 | AI 模型名称 |
 | `OPENAI_BASE_URL` | 否 | 自定义 OpenAI API 入口 |
@@ -43,9 +45,15 @@ cp .env.example .env
 | `DATABASE_PATH` | 否 | 数据库路径 |
 | `PROMO_HOUR_UTC` | 否 | 推送小时(UTC) |
 | `PROMO_MINUTE` | 否 | 推送分钟 |
+| `PROMO_CONCURRENCY` | 否 | 推送并发数 |
+| `PROMO_SEND_INTERVAL` | 否 | 推送间隔(秒) |
+| `PROMO_LOCK_ENABLED` | 否 | 是否启用分布式锁 |
+| `PROMO_LOCK_TTL` | 否 | 锁过期时间(秒) |
+| `PROMO_BATCH_SIZE` | 否 | 推送分页大小 |
 | `RATE_LIMIT` | 否 | 速率限制次数 |
 | `RATE_LIMIT_WINDOW` | 否 | 速率限制窗口(秒) |
 | `RATE_LIMIT_CLEANUP` | 否 | 速率记录清理间隔(秒) |
+| `RATE_LIMIT_STORAGE` | 否 | 速率限制存储方式 |
 | `LOG_LEVEL` | 否 | 日志级别 |
 | `LOG_FORMAT` | 否 | 日志格式(text/json) |
 | `LOG_FILE` | 否 | 日志文件路径 |
@@ -112,9 +120,30 @@ python -m ruff check .
 
 ### 项目结构
 
-- `src/handlers/` - 消息处理器
-- `src/services/` - 业务逻辑
-- `src/models/` - 数据模型
+```
+├── main.py                 # 应用入口，生命周期管理
+├── src/
+│   ├── config.py           # 配置管理（不可变 dataclass）
+│   ├── db_utils.py         # 数据库路径工具
+│   ├── logging_setup.py    # 日志配置（支持 JSON 格式）
+│   ├── middleware.py       # 速率限制中间件
+│   ├── utils.py            # 工具函数（Markdown 转义等）
+│   ├── handlers/           # 消息处理器
+│   │   ├── user_handlers.py    # 用户命令（/start, /help, /submit, /list）
+│   │   └── admin_handlers.py   # 管理员命令（/pending, /stats）
+│   ├── services/           # 业务逻辑
+│   │   ├── channel_service.py  # 频道 CRUD 操作
+│   │   ├── promo_service.py    # 推广消息发送
+│   │   ├── ai_classifier.py    # AI 分类（OpenAI）
+│   │   ├── lock_service.py     # 分布式锁
+│   │   ├── pending_submission_service.py # 待验证提交持久化
+│   │   └── health_server.py    # 健康检查端点
+│   └── models/
+│       └── database.py     # 数据库初始化与迁移
+├── tests/                  # 测试文件
+├── scripts/                # 运维脚本
+└── data/                   # 数据目录
+```
 
 ### 命名约定
 

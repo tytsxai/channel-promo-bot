@@ -21,10 +21,14 @@ fi
 BACKUP_DIR="${PROJECT_DIR}/backups"
 RETENTION_DAYS=7
 
-# 检查 sqlite3 是否存在
+# 检查 sqlite3 或 python3 是否存在
+SQLITE3_AVAILABLE=1
 if ! command -v sqlite3 >/dev/null 2>&1; then
-    echo "错误: 未找到 sqlite3 命令，请先安装 sqlite3"
-    exit 1
+    SQLITE3_AVAILABLE=0
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "错误: 未找到 sqlite3 或 python3，无法执行备份"
+        exit 1
+    fi
 fi
 
 # 检查数据库文件是否存在
@@ -42,7 +46,25 @@ BACKUP_FILE="${BACKUP_DIR}/bot_backup_${TIMESTAMP}.db"
 
 # 执行备份
 echo "开始备份数据库..."
-sqlite3 "$DB_PATH" ".backup '$BACKUP_FILE'"
+if [ "$SQLITE3_AVAILABLE" -eq 1 ]; then
+    sqlite3 "$DB_PATH" ".backup '$BACKUP_FILE'"
+else
+    echo "未找到 sqlite3，使用 Python 备份"
+    python3 - "$DB_PATH" "$BACKUP_FILE" <<'PY'
+import sqlite3
+import sys
+
+db_path, backup_path = sys.argv[1:3]
+src = sqlite3.connect(db_path)
+dst = sqlite3.connect(backup_path)
+try:
+    src.backup(dst)
+    dst.commit()
+finally:
+    dst.close()
+    src.close()
+PY
+fi
 
 if [ -f "$BACKUP_FILE" ]; then
     echo "备份成功: $BACKUP_FILE"
