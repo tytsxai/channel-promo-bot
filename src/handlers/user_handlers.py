@@ -1,6 +1,6 @@
+import html
 import logging
 import re
-import time
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
@@ -8,14 +8,12 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from src.config import config
 from src.services.channel_service import ChannelService
-from src.utils import escape_markdown
+from src.services.pending_submission_service import PendingSubmissionService
+from src.utils import LineChunker, escape_markdown
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-# 临时存储待确认的频道信息（仅内存，不持久化）。
-# 键为 user_id，值包含 username/chat_id/title/created_at，用于“已添加，验证”流程。
-_pending_submissions: dict[int, dict] = {}
 _PENDING_TTL_SECONDS = 60 * 60  # 1 小时未完成的提交自动过期
 
 # 仅匹配 Telegram 公共用户名（不含 @ 前缀）
@@ -27,68 +25,56 @@ _TME_USERNAME_RE = re.compile(
 _INVITE_LINK_RE = re.compile(
     r"(?i)(?:https?://)?(?:t\.me|telegram\.me)/(?:joinchat/|\+)"
 )
+MAX_LIST_MESSAGE_LEN = 4000
 
 
-def _cleanup_pending_submissions(now: float) -> None:
-    if not _pending_submissions:
-        return
-    stale_users = [
-        uid
-        for uid, info in _pending_submissions.items()
-        if now - info.get("created_at", now) > _PENDING_TTL_SECONDS
-    ]
-    for uid in stale_users:
-        _pending_submissions.pop(uid, None)
-
-
-def _set_pending_submission(user_id: int, **payload: object) -> None:
-    payload["created_at"] = time.time()
-    _pending_submissions[user_id] = payload
+async def _cleanup_pending_submissions() -> None:
+    # Throttle cleanup to avoid doing DB deletes on every user message.
+    await PendingSubmissionService.cleanup_expired(_PENDING_TTL_SECONDS)
 
 
 def get_help_text(bot_username: str = "") -> str:
     beijing_hour = (config.promo_hour_utc + 8) % 24
     bot_link = f"@{bot_username}" if bot_username else "本机器人"
-    return f"""🤖 **互推机器人使用指南**
-
-**如何提交频道：**
-1️⃣ 直接发送频道链接（如 t.me/yourchannel）
-2️⃣ 按提示将 {bot_link} 添加为频道管理员
-3️⃣ 点击「已添加，验证」完成提交
-（若链接无法识别，可转发频道任意一条消息给机器人）
-
-**命令列表：**
-/start - 开始使用
-/submit - 提交频道参与互推
-/list - 查看已通过审核的频道列表
-/help - 查看帮助
-
-**参与条件：**
-• 频道成员数 ≥ {config.min_members}
-• 机器人需要频道管理员权限
-• 提交后需等待管理员审核
-
-**互推说明：**
-每天北京时间 {beijing_hour:02d}:{config.promo_minute:02d}，机器人会在所有参与的频道发送互推文案。
-"""
+    # 使用 HTML parse_mode，避免 Markdown 转义遗漏导致 BadRequest。
+    bot_link = html.escape(bot_link)
+    return (
+        "🤖 <b>互推机器人使用指南</b>\n\n"
+        "<b>如何提交频道：</b>\n"
+        "1️⃣ 直接发送频道链接（如 t.me/yourchannel）\n"
+        f"2️⃣ 按提示将 {bot_link} 添加为频道管理员\n"
+        "3️⃣ 点击「已添加，验证」完成提交\n"
+        "（若链接无法识别，可转发频道任意一条消息给机器人）\n\n"
+        "<b>命令列表：</b>\n"
+        "/start - 开始使用\n"
+        "/submit - 提交频道参与互推\n"
+        "/list - 查看已通过审核的频道列表\n"
+        "/help - 查看帮助\n\n"
+        "<b>参与条件：</b>\n"
+        f"• 频道成员数 ≥ {config.min_members}\n"
+        "• 机器人需要频道管理员权限\n"
+        "• 提交后需等待管理员审核\n\n"
+        "<b>互推说明：</b>\n"
+        f"每天北京时间 {beijing_hour:02d}:{config.promo_minute:02d}，"
+        "机器人会在所有参与的频道发送互推文案。"
+    )
 
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, bot: Bot) -> None:
-    me = await bot.get_me()
     await message.answer(
         "👋 欢迎使用互推机器人！\n\n"
-        "📢 **提交频道参与互推：**\n"
+        "📢 <b>提交频道参与互推：</b>\n"
         "直接发送频道链接即可（如 t.me/yourchannel）\n\n"
-        f"发送 /help 查看详细帮助",
-        parse_mode="Markdown"
+        "发送 /help 查看详细帮助",
+        parse_mode="HTML",
     )
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message, bot: Bot) -> None:
     me = await bot.get_me()
-    await message.answer(get_help_text(me.username or ""), parse_mode="Markdown")
+    await message.answer(get_help_text(me.username or ""), parse_mode="HTML")
 
 
 @router.message(Command("submit"))
@@ -129,7 +115,7 @@ def _contains_invite_link(text: str) -> bool:
 async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
     """处理用户发送的频道链接"""
     user_id = message.from_user.id
-    _cleanup_pending_submissions(time.time())
+    await _cleanup_pending_submissions()
 
     if _contains_invite_link(text):
         await message.answer(
@@ -167,7 +153,10 @@ async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
             return
     except Exception as e:
         logger.warning("Failed to get chat @%s: %s", username, e)
-        _set_pending_submission(user_id, username=username)
+        await PendingSubmissionService.set_pending_submission(
+            user_id=user_id,
+            username=username,
+        )
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text="✅ 已添加，验证",
@@ -201,8 +190,8 @@ async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
         await _verify_and_submit(message, chat, username, user_id, bot)
     else:
         # 机器人不在频道，引导用户添加
-        _set_pending_submission(
-            user_id,
+        await PendingSubmissionService.set_pending_submission(
+            user_id=user_id,
             username=username,
             chat_id=chat.id,
             title=chat.title,
@@ -219,16 +208,18 @@ async def _handle_channel_link(message: Message, text: str, bot: Bot) -> None:
             )]
         ])
 
+        title = html.escape(chat.title or "")
+        safe_username = html.escape(bot_username)
         await message.answer(
-            f"📢 频道: **{chat.title}**\n\n"
-            f"请先将 @{bot_username} 添加为频道管理员：\n\n"
+            f"📢 频道: <b>{title}</b>\n\n"
+            f"请先将 @{safe_username} 添加为频道管理员：\n\n"
             "1️⃣ 打开频道设置\n"
             "2️⃣ 点击「管理员」\n"
-            "3️⃣ 添加管理员 → 搜索 @" + bot_username + "\n"
+            "3️⃣ 添加管理员 → 搜索 @" + safe_username + "\n"
             "4️⃣ 授予「发送消息」权限\n"
             "5️⃣ 点击下方按钮验证\n",
             reply_markup=keyboard,
-            parse_mode="Markdown"
+            parse_mode="HTML",
         )
 
 
@@ -302,11 +293,11 @@ async def callback_verify(callback: CallbackQuery, bot: Bot) -> None:
     """处理验证回调"""
     user_id = callback.from_user.id
     username = callback.data.split(":", 1)[1]
-    _cleanup_pending_submissions(time.time())
+    await _cleanup_pending_submissions()
 
     try:
-        pending = _pending_submissions.get(user_id, {})
-        chat_id = pending.get("chat_id")
+        pending = await PendingSubmissionService.get_pending_submission(user_id)
+        chat_id = pending.get("chat_id") if pending else None
         if chat_id:
             chat = await bot.get_chat(chat_id)
         else:
@@ -340,8 +331,7 @@ async def callback_verify(callback: CallbackQuery, bot: Bot) -> None:
     success = await _verify_and_submit(callback.message, chat, username, user_id, bot)
 
     if success:
-        # 清理待确认数据
-        _pending_submissions.pop(user_id, None)
+        await PendingSubmissionService.clear_pending_submission(user_id)
 
         # 删除引导消息
         try:
@@ -354,8 +344,8 @@ async def callback_verify(callback: CallbackQuery, bot: Bot) -> None:
 async def callback_cancel(callback: CallbackQuery) -> None:
     """取消提交"""
     user_id = callback.from_user.id
-    _cleanup_pending_submissions(time.time())
-    _pending_submissions.pop(user_id, None)
+    await _cleanup_pending_submissions()
+    await PendingSubmissionService.clear_pending_submission(user_id)
     await callback.answer("已取消")
     try:
         await callback.message.delete()
@@ -369,7 +359,7 @@ async def handle_forwarded_channel(message: Message, bot: Bot) -> None:
     chat = message.forward_from_chat
     if not chat or chat.type != "channel":
         return
-    _cleanup_pending_submissions(time.time())
+    await _cleanup_pending_submissions()
 
     if not chat.username:
         await message.answer(
@@ -397,8 +387,8 @@ async def handle_forwarded_channel(message: Message, bot: Bot) -> None:
         await _verify_and_submit(message, chat, chat.username, user_id, bot)
         return
 
-    _set_pending_submission(
-        user_id,
+    await PendingSubmissionService.set_pending_submission(
+        user_id=user_id,
         username=chat.username,
         chat_id=chat.id,
         title=chat.title,
@@ -415,16 +405,18 @@ async def handle_forwarded_channel(message: Message, bot: Bot) -> None:
         )]
     ])
 
+    title = html.escape(chat.title or "")
+    safe_username = html.escape(bot_username)
     await message.answer(
-        f"📢 频道: **{chat.title}**\n\n"
-        f"请先将 @{bot_username} 添加为频道管理员：\n\n"
+        f"📢 频道: <b>{title}</b>\n\n"
+        f"请先将 @{safe_username} 添加为频道管理员：\n\n"
         "1️⃣ 打开频道设置\n"
         "2️⃣ 点击「管理员」\n"
-        "3️⃣ 添加管理员 → 搜索 @" + bot_username + "\n"
+        "3️⃣ 添加管理员 → 搜索 @" + safe_username + "\n"
         "4️⃣ 授予「发送消息」权限\n"
         "5️⃣ 点击下方按钮验证\n",
         reply_markup=keyboard,
-        parse_mode="Markdown"
+        parse_mode="HTML",
     )
 
 
@@ -455,27 +447,35 @@ async def handle_text_message(message: Message, bot: Bot) -> None:
 @router.message(Command("list"))
 async def cmd_list(message: Message) -> None:
     try:
-        channels = await ChannelService.get_approved_channels()
+        total = await ChannelService.get_approved_count()
     except Exception as e:
         logger.error(f"Failed to get channels: {e}")
         await message.answer("❌ 获取频道列表失败，请稍后重试")
         return
 
-    if not channels:
+    if total == 0:
         await message.answer("📭 暂无已审核通过的频道")
         return
 
-    grouped: dict[str, list] = {}
-    for ch in channels:
+    # MarkdownV2 输出必须转义动态字段（分类/标题/用户名），并按类别流式输出以控内存。
+    chunker = LineChunker(MAX_LIST_MESSAGE_LEN)
+    for text in chunker.add_line("📋 *互推频道列表*"):
+        await message.answer(text, parse_mode="MarkdownV2")
+
+    current_category: str | None = None
+    async for ch in ChannelService.iter_approved_channels(config.promo_batch_size):
         cat = ch["category"] or "其他"
-        grouped.setdefault(cat, []).append(ch)
+        if cat != current_category:
+            for text in chunker.add_line(""):
+                await message.answer(text, parse_mode="MarkdownV2")
+            for text in chunker.add_line(f"*{escape_markdown(cat)}*"):
+                await message.answer(text, parse_mode="MarkdownV2")
+            current_category = cat
 
-    lines = ["📋 *互推频道列表*\n"]
-    for cat, chs in grouped.items():
-        lines.append(f"\n*{escape_markdown(cat)}*")
-        for ch in chs:
-            title = escape_markdown(ch['title'])
-            link = f"@{escape_markdown(ch['username'])}" if ch["username"] else title
-            lines.append(f"• {title} \\- {link}")
+        title = escape_markdown(ch["title"])
+        link = f"@{escape_markdown(ch['username'])}" if ch["username"] else title
+        for text in chunker.add_line(f"• {title} \\- {link}"):
+            await message.answer(text, parse_mode="MarkdownV2")
 
-    await message.answer("\n".join(lines), parse_mode="MarkdownV2")
+    for text in chunker.flush():
+        await message.answer(text, parse_mode="MarkdownV2")

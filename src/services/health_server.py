@@ -29,6 +29,8 @@ _REASONS = {
     408: "Request Timeout",
     503: "Service Unavailable",
 }
+_MAX_REQUEST_LINE = 4096
+_MAX_HEADER_BYTES = 8192
 
 
 def _json_response(status_code: int, payload: dict) -> bytes:
@@ -59,11 +61,15 @@ async def _handle_path(path: str) -> tuple[int, dict]:
     return 404, {"status": "not_found", "time": now}
 
 
-async def _drain_headers(reader: asyncio.StreamReader) -> None:
+async def _drain_headers(reader: asyncio.StreamReader) -> bool:
+    total = 0
     while True:
         line = await reader.readline()
         if not line or line in (b"\n", b"\r\n"):
-            break
+            return True
+        total += len(line)
+        if total > _MAX_HEADER_BYTES:
+            return False
 
 
 async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -71,13 +77,21 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
         request_line = await asyncio.wait_for(reader.readline(), timeout=5)
         if not request_line:
             return
+        if len(request_line) > _MAX_REQUEST_LINE:
+            writer.write(_json_response(400, {"status": "bad_request"}))
+            await writer.drain()
+            return
         parts = request_line.decode("utf-8", errors="ignore").strip().split()
         if len(parts) < 2:
             writer.write(_json_response(400, {"status": "bad_request"}))
             await writer.drain()
             return
         method, path = parts[0].upper(), parts[1]
-        await _drain_headers(reader)
+        ok = await _drain_headers(reader)
+        if not ok:
+            writer.write(_json_response(400, {"status": "bad_request"}))
+            await writer.drain()
+            return
         if method != "GET":
             writer.write(_json_response(405, {"status": "method_not_allowed"}))
             await writer.drain()

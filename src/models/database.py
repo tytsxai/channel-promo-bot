@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 import aiosqlite
 
 from src.config import config
+from src.db_utils import get_database_path
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,42 @@ async def _migration_v1(db: aiosqlite.Connection) -> None:
     """)
 
 
+async def _migration_v2(db: aiosqlite.Connection) -> None:
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS pending_submissions (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT NOT NULL,
+            chat_id TEXT,
+            title TEXT,
+            created_at REAL NOT NULL
+        )
+    """)
+    await db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pending_submissions_created_at
+        ON pending_submissions(created_at)
+    """)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS rate_limit_requests (
+            user_id INTEGER NOT NULL,
+            ts REAL NOT NULL
+        )
+    """)
+    await db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_rate_limit_user_ts
+        ON rate_limit_requests(user_id, ts)
+    """)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS distributed_locks (
+            name TEXT PRIMARY KEY,
+            owner TEXT NOT NULL,
+            expires_at REAL NOT NULL
+        )
+    """)
+
+
 MIGRATIONS: list[tuple[int, MigrationFn]] = [
     (1, _migration_v1),
+    (2, _migration_v2),
 ]
 
 
@@ -55,12 +90,12 @@ async def _apply_migrations(db: aiosqlite.Connection) -> None:
 
 
 async def init_db() -> None:
-    db_path = config.database_path
+    db_path, use_uri = get_database_path(config.database_path)
     db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with aiosqlite.connect(db_path, uri=use_uri) as db:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA busy_timeout=5000")
         await _apply_migrations(db)

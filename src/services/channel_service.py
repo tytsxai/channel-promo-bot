@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -6,21 +7,42 @@ from typing import Any
 
 import aiosqlite
 
-from src.config import config
+from src.db_utils import get_database_path
 
 logger = logging.getLogger(__name__)
+# Keeps shared in-memory DB alive across connections in tests.
+_memory_keeper: aiosqlite.Connection | None = None
+_memory_keeper_lock = asyncio.Lock()
 
 
 @asynccontextmanager
 async def get_db() -> AsyncIterator[aiosqlite.Connection]:
-    db = await aiosqlite.connect(config.database_path)
-    db.row_factory = aiosqlite.Row
-    await db.execute("PRAGMA busy_timeout=5000")
-    await db.execute("PRAGMA foreign_keys=ON")
-    try:
-        yield db
-    finally:
-        await db.close()
+    db_path, use_uri = get_database_path()
+    if use_uri:
+        global _memory_keeper
+        async with _memory_keeper_lock:
+            if _memory_keeper is None:
+                _memory_keeper = await aiosqlite.connect(db_path, uri=True)
+                await _memory_keeper.execute("PRAGMA journal_mode=WAL")
+                await _memory_keeper.execute("PRAGMA busy_timeout=5000")
+                await _memory_keeper.execute("PRAGMA foreign_keys=ON")
+        db = await aiosqlite.connect(db_path, uri=True)
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("PRAGMA foreign_keys=ON")
+        try:
+            yield db
+        finally:
+            await db.close()
+    else:
+        db = await aiosqlite.connect(db_path, uri=False)
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("PRAGMA foreign_keys=ON")
+        try:
+            yield db
+        finally:
+            await db.close()
 
 
 class ChannelService:
@@ -63,7 +85,7 @@ class ChannelService:
             cursor = await db.execute(
                 """
                 UPDATE channels SET status = 'approved', approved_by = ?,
-                approved_at = CURRENT_TIMESTAMP, category = ? WHERE id = ?
+                approved_at = CURRENT_TIMESTAMP, category = ? WHERE id = ? AND status = 'pending'
             """,
                 (approved_by, category, channel_id),
             )
@@ -74,7 +96,8 @@ class ChannelService:
     async def reject_channel(channel_id: int) -> bool:
         async with get_db() as db:
             cursor = await db.execute(
-                "UPDATE channels SET status = 'rejected' WHERE id = ?", (channel_id,)
+                "UPDATE channels SET status = 'rejected' WHERE id = ? AND status = 'pending'",
+                (channel_id,),
             )
             await db.commit()
             return cursor.rowcount > 0
@@ -105,6 +128,29 @@ class ChannelService:
             )
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+
+    @staticmethod
+    async def iter_approved_channels(
+        batch_size: int = 500,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream approved channels in deterministic order (OFFSET-based).
+
+        For very large tables, keyset pagination would be more efficient.
+        """
+        offset = 0
+        while True:
+            async with get_db() as db:
+                cursor = await db.execute(
+                    "SELECT * FROM channels WHERE status = ? "
+                    "ORDER BY category, title LIMIT ? OFFSET ?",
+                    ("approved", batch_size, offset),
+                )
+                rows = await cursor.fetchall()
+            if not rows:
+                break
+            for row in rows:
+                yield dict(row)
+            offset += batch_size
 
     @staticmethod
     async def mark_inactive(chat_id: int) -> bool:

@@ -1,7 +1,9 @@
 import asyncio
 import contextlib
 import logging
+import os
 import signal
+import socket
 from datetime import UTC
 
 from aiogram import Bot, Dispatcher
@@ -20,10 +22,13 @@ from src.logging_setup import configure_logging
 from src.middleware import RateLimitMiddleware
 from src.models.database import init_db
 from src.services.health_server import start_health_server
+from src.services.lock_service import acquire_lock, refresh_lock, release_lock
 from src.services.promo_service import send_promo_to_all
 
 configure_logging(config)
 logger = logging.getLogger(__name__)
+_INSTANCE_ID = f"{socket.gethostname()}:{os.getpid()}"
+_PROMO_LOCK_NAME = "scheduled_promo"
 
 
 def _log_startup_summary() -> None:
@@ -33,14 +38,21 @@ def _log_startup_summary() -> None:
         else "disabled"
     )
     logger.info(
-        "Startup config: env=%s db=%s promo=%02d:%02d UTC rate_limit=%s/%ss "
-        "healthcheck=%s log_format=%s log_file=%s openai=%s",
+        "Startup config: env=%s db=%s promo=%02d:%02d UTC "
+        "promo_concurrency=%s promo_interval=%ss promo_lock=%s promo_batch=%s "
+        "rate_limit=%s/%ss rate_limit_storage=%s healthcheck=%s "
+        "log_format=%s log_file=%s openai=%s",
         config.environment,
         config.database_path,
         config.promo_hour_utc,
         config.promo_minute,
+        config.promo_concurrency,
+        config.promo_send_interval,
+        "enabled" if config.promo_lock_enabled else "disabled",
+        config.promo_batch_size,
         config.rate_limit,
         config.rate_limit_window,
+        config.rate_limit_storage,
         healthcheck,
         config.log_format,
         config.log_file or "stdout",
@@ -149,13 +161,57 @@ async def _sync_bot_commands(bot: Bot) -> None:
     logger.info("Bot commands updated for admin chats")
 
 
+async def _refresh_promo_lock(
+    stop_event: asyncio.Event, lock_lost_event: asyncio.Event
+) -> None:
+    interval = max(5, config.promo_lock_ttl // 3)
+    while True:
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+            return
+        except asyncio.TimeoutError:
+            refreshed = await refresh_lock(
+                _PROMO_LOCK_NAME, _INSTANCE_ID, config.promo_lock_ttl
+            )
+            if not refreshed:
+                logger.warning("Promo lock refresh failed, lock may expire")
+                lock_lost_event.set()
+                return
+
+
 async def scheduled_promo(bot: Bot):
+    lock_acquired = False
+    refresh_task: asyncio.Task | None = None
+    stop_event: asyncio.Event | None = None
+    lock_lost_event = asyncio.Event()  # Signals loss of leader lock to stop sending.
+
     try:
+        if config.promo_lock_enabled:
+            lock_acquired = await acquire_lock(
+                _PROMO_LOCK_NAME, _INSTANCE_ID, config.promo_lock_ttl
+            )
+            if not lock_acquired:
+                logger.info("Scheduled promo skipped: lock held by another instance")
+                return
+            stop_event = asyncio.Event()
+            refresh_task = asyncio.create_task(
+                _refresh_promo_lock(stop_event, lock_lost_event)
+            )
+
         logger.info("Starting scheduled promo broadcast...")
-        sent, failed = await send_promo_to_all(bot)
+        sent, failed = await send_promo_to_all(bot, cancel_event=lock_lost_event)
         logger.info(f"Promo broadcast complete: {sent} sent, {failed} failed")
     except Exception as e:
         logger.exception(f"Scheduled promo failed: {e}")
+    finally:
+        if stop_event is not None:
+            stop_event.set()
+        if refresh_task is not None:
+            with contextlib.suppress(Exception):
+                await refresh_task
+        if lock_acquired:
+            with contextlib.suppress(Exception):
+                await release_lock(_PROMO_LOCK_NAME, _INSTANCE_ID)
 
 
 async def main():
@@ -181,6 +237,7 @@ async def main():
             limit=config.rate_limit,
             window=config.rate_limit_window,
             cleanup_interval=config.rate_limit_cleanup,
+            storage=config.rate_limit_storage,
         )
     )
 

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any
 
 from aiogram import Bot
@@ -10,41 +11,116 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
 )
 
+from src.config import config
 from src.services.channel_service import ChannelService
-from src.utils import escape_markdown
+from src.utils import LineChunker, chunk_lines, escape_markdown
 
 logger = logging.getLogger(__name__)
 MAX_MESSAGE_LEN = 4000
 
 
-async def send_promo_to_all(bot: Bot) -> tuple[int, int]:
-    channels = await ChannelService.get_approved_channels()
-    if not channels:
+class SendLimiter:
+    def __init__(self, min_interval: float):
+        self._min_interval = max(0.0, min_interval)
+        self._lock = asyncio.Lock()
+        self._next_time = 0.0
+
+    async def wait_turn(self) -> None:
+        if self._min_interval <= 0:
+            return
+        async with self._lock:
+            now = time.monotonic()
+            if now < self._next_time:
+                await asyncio.sleep(self._next_time - now)
+                now = time.monotonic()
+            self._next_time = now + self._min_interval
+
+    async def impose_cooldown(self, seconds: float) -> None:
+        if seconds <= 0:
+            return
+        async with self._lock:
+            now = time.monotonic()
+            self._next_time = max(self._next_time, now + seconds)
+
+
+async def send_promo_to_all(
+    bot: Bot, cancel_event: asyncio.Event | None = None
+) -> tuple[int, int]:
+    total = await ChannelService.get_approved_count()
+    if total == 0:
         logger.info("No approved channels, skipping promo")
         return 0, 0
+    if cancel_event and cancel_event.is_set():
+        logger.warning("Promo broadcast cancelled before start")
+        return 0, total
 
-    messages = _build_promo_messages(channels)
+    # Build once and broadcast to all channels to avoid repeated DB scans.
+    messages = await _build_promo_messages_from_db()
+    limiter = SendLimiter(config.promo_send_interval)
+    worker_count = max(1, config.promo_concurrency)
+    # Bounded queue keeps memory stable when channel count is large.
+    queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue(
+        maxsize=worker_count * 4
+    )
+
     sent_count = 0
     failed_count = 0
+    count_lock = asyncio.Lock()
 
-    for ch in channels:
+    async def _send_to_channel(ch: dict[str, Any]) -> bool:
         try:
             chat_id = int(ch["chat_id"])
         except (TypeError, ValueError):
             logger.warning("Invalid chat_id in channel record: %s", ch.get("chat_id"))
-            failed_count += 1
-            continue
-        success = True
-        for text in messages:
-            success = await _send_with_retry(bot, chat_id, text)
-            if not success:
+            return False
+
+        try:
+            for text in messages:
+                success = await _send_with_retry(bot, chat_id, text, limiter=limiter)
+                if not success:
+                    return False
+            return True
+        except Exception as exc:
+            logger.error("Send failed for %s: %s", chat_id, exc)
+            return False
+
+    async def _producer() -> None:
+        async for ch in ChannelService.iter_approved_channels(config.promo_batch_size):
+            if cancel_event and cancel_event.is_set():
                 break
-            await asyncio.sleep(0.05)
-        if success:
-            sent_count += 1
-        else:
-            failed_count += 1
-        await asyncio.sleep(0.1)
+            await queue.put(ch)
+        for _ in range(worker_count):
+            await queue.put(None)
+
+    async def _worker() -> None:
+        nonlocal sent_count, failed_count
+        while True:
+            ch = await queue.get()
+            if ch is None:
+                queue.task_done()
+                return
+            if cancel_event and cancel_event.is_set():
+                async with count_lock:
+                    failed_count += 1
+                queue.task_done()
+                continue
+            ok = await _send_to_channel(ch)
+            async with count_lock:
+                if ok:
+                    sent_count += 1
+                else:
+                    failed_count += 1
+            queue.task_done()
+
+    producer = asyncio.create_task(_producer())
+    workers = [asyncio.create_task(_worker()) for _ in range(worker_count)]
+    await producer
+    await queue.join()
+    await asyncio.gather(*workers, return_exceptions=True)
+
+    if cancel_event and cancel_event.is_set():
+        failed_count = total - sent_count
+        logger.warning("Promo broadcast stopped early due to lock loss")
 
     logger.info(f"Promo broadcast: {sent_count} sent, {failed_count} failed")
     return sent_count, failed_count
@@ -61,9 +137,11 @@ def _build_promo_lines(channels: list[dict[str, Any]]) -> list[str]:
     for cat, chs in grouped.items():
         lines.append(f"📁 *{escape_markdown(cat)}*")
         for ch in chs:
-            title = escape_markdown(ch['title'])
+            # MarkdownV2 对动态文本和 URL 都需要转义，避免 BadRequest。
+            title = escape_markdown(ch["title"])
             if ch["username"]:
-                lines.append(f"👉 [{title}](https://t.me/{ch['username']})")
+                safe_username = escape_markdown(ch["username"])
+                lines.append(f"👉 [{title}](https://t.me/{safe_username})")
             else:
                 lines.append(f"👉 {title}")
         lines.append("")
@@ -84,40 +162,53 @@ def _build_promo_messages(channels: list[dict[str, Any]]) -> list[str]:
 
 
 def _chunk_lines(lines: list[str], limit: int) -> list[str]:
+    return chunk_lines(lines, limit)
+
+
+async def _build_promo_messages_from_db() -> list[str]:
+    # Stream lines from DB to avoid loading large channel lists into memory.
     messages: list[str] = []
-    buffer: list[str] = []
-    length = 0
+    chunker = LineChunker(MAX_MESSAGE_LEN)
 
-    for line in lines:
-        if len(line) > limit:
-            if buffer:
-                messages.append("\n".join(buffer))
-                buffer = []
-                length = 0
-            for i in range(0, len(line), limit):
-                messages.append(line[i : i + limit])
-            continue
+    def _append_line(line: str) -> None:
+        messages.extend(chunker.add_line(line))
 
-        extra = len(line) + (1 if buffer else 0)
-        if length + extra > limit:
-            messages.append("\n".join(buffer))
-            buffer = [line]
-            length = len(line)
+    current_category: str | None = None
+    _append_line("🔥 *今日互推精选* 🔥")
+    _append_line("")
+
+    async for ch in ChannelService.iter_approved_channels(config.promo_batch_size):
+        cat = ch["category"] or "其他"
+        if cat != current_category:
+            if current_category is not None:
+                _append_line("")
+            _append_line(f"📁 *{escape_markdown(cat)}*")
+            current_category = cat
+        title = escape_markdown(ch["title"])
+        if ch["username"]:
+            safe_username = escape_markdown(ch["username"])
+            _append_line(f"👉 [{title}](https://t.me/{safe_username})")
         else:
-            buffer.append(line)
-            length += extra
+            _append_line(f"👉 {title}")
 
-    if buffer:
-        messages.append("\n".join(buffer))
-
+    _append_line("")
+    _append_line("─" * 20)
+    _append_line("💡 想加入互推？私聊机器人发送 /help 了解详情")
+    messages.extend(chunker.flush())
     return messages
 
 
 async def _send_with_retry(
-    bot: Bot, chat_id: int, text: str, max_retries: int = 3
+    bot: Bot,
+    chat_id: int,
+    text: str,
+    max_retries: int = 3,
+    limiter: SendLimiter | None = None,
 ) -> bool:
     for attempt in range(max_retries):
         try:
+            if limiter:
+                await limiter.wait_turn()
             await bot.send_message(
                 chat_id=chat_id,
                 text=text,
@@ -127,6 +218,8 @@ async def _send_with_retry(
             return True
         except TelegramRetryAfter as e:
             logger.warning(f"Rate limited, waiting {e.retry_after}s")
+            if limiter:
+                await limiter.impose_cooldown(e.retry_after)
             await asyncio.sleep(e.retry_after)
         except TelegramForbiddenError:
             logger.warning(f"Bot removed from channel {chat_id}, marking inactive")

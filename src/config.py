@@ -42,6 +42,40 @@ def _get_int(
     return value
 
 
+def _get_float(
+    name: str,
+    default: float,
+    *,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        value = default
+    else:
+        try:
+            value = float(raw)
+        except ValueError as exc:
+            raise ConfigError(f"{name} must be a float, got '{raw}'") from exc
+    if min_value is not None and value < min_value:
+        raise ConfigError(f"{name} must be >= {min_value}, got {value}")
+    if max_value is not None and value > max_value:
+        raise ConfigError(f"{name} must be <= {max_value}, got {value}")
+    return value
+
+
+def _get_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ConfigError(f"{name} must be a boolean, got '{raw}'")
+
+
 def _get_optional_str(name: str) -> str | None:
     value = os.getenv(name)
     if value is None:
@@ -78,6 +112,13 @@ def _get_log_level(value: str) -> str:
     return normalized
 
 
+def _get_rate_limit_storage(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized not in {"memory", "sqlite"}:
+        raise ConfigError("RATE_LIMIT_STORAGE must be 'memory' or 'sqlite'")
+    return normalized
+
+
 @dataclass(frozen=True)
 class Config:
     bot_token: str
@@ -91,9 +132,15 @@ class Config:
     database_path: str
     promo_hour_utc: int
     promo_minute: int
+    promo_concurrency: int
+    promo_send_interval: float
+    promo_lock_enabled: bool
+    promo_lock_ttl: int
+    promo_batch_size: int
     rate_limit: int
     rate_limit_window: int
     rate_limit_cleanup: int
+    rate_limit_storage: str
     log_level: str
     log_format: str
     log_file: str | None
@@ -129,9 +176,17 @@ class Config:
             database_path=_get_str("DATABASE_PATH", "data/bot.db"),
             promo_hour_utc=promo_hour,
             promo_minute=promo_minute,
+            promo_concurrency=_get_int("PROMO_CONCURRENCY", 5, min_value=1),
+            promo_send_interval=_get_float("PROMO_SEND_INTERVAL", 0.05, min_value=0.0),
+            promo_lock_enabled=_get_bool("PROMO_LOCK_ENABLED", True),
+            promo_lock_ttl=_get_int("PROMO_LOCK_TTL", 3600, min_value=60),
+            promo_batch_size=_get_int("PROMO_BATCH_SIZE", 500, min_value=1),
             rate_limit=_get_int("RATE_LIMIT", 10, min_value=1),
             rate_limit_window=_get_int("RATE_LIMIT_WINDOW", 60, min_value=1),
             rate_limit_cleanup=_get_int("RATE_LIMIT_CLEANUP", 300, min_value=1),
+            rate_limit_storage=_get_rate_limit_storage(
+                _get_str("RATE_LIMIT_STORAGE", "sqlite")
+            ),
             log_level=_get_log_level(_get_str("LOG_LEVEL", "INFO")),
             log_format=_get_log_format(_get_str("LOG_FORMAT", "text")),
             log_file=_get_optional_str("LOG_FILE"),

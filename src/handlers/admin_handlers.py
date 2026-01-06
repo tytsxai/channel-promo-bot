@@ -31,6 +31,8 @@ async def cmd_pending(message: Message) -> None:
 
 async def _show_pending_page(target: Message | CallbackQuery, page: int) -> None:
     """显示待审核频道的指定页"""
+    if page < 0:
+        page = 0
     channels, total = await ChannelService.get_pending_channels_paginated(
         page=page, per_page=PENDING_PER_PAGE
     )
@@ -45,6 +47,12 @@ async def _show_pending_page(target: Message | CallbackQuery, page: int) -> None
         return
 
     total_pages = (total + PENDING_PER_PAGE - 1) // PENDING_PER_PAGE
+    if page >= total_pages:
+        page = total_pages - 1
+        channels, total = await ChannelService.get_pending_channels_paginated(
+            page=page, per_page=PENDING_PER_PAGE
+        )
+    # MarkdownV2 下动态字段必须转义，避免解析错误。
     lines = [f"📋 *待审核频道* \\(第 {page + 1}/{total_pages} 页，共 {total} 条\\)\n"]
 
     for ch in channels:
@@ -97,9 +105,24 @@ async def cb_approve(callback: CallbackQuery) -> None:
             await callback.answer("频道不存在", show_alert=True)
             return
 
+        status = channel.get("status")
+        if status and status != "pending":
+            await callback.answer("频道已处理", show_alert=True)
+            return
+
         category = await classify_channel(channel["title"])
-        await ChannelService.approve_channel(
+        updated = await ChannelService.approve_channel(
             channel_id, callback.from_user.id, category
+        )
+        if not updated:
+            await callback.answer("频道已处理", show_alert=True)
+            return
+        logger.info(
+            "Channel approved: id=%s title=%s by=%s category=%s",
+            channel_id,
+            channel["title"],
+            callback.from_user.id,
+            category,
         )
 
         await callback.message.edit_text(
@@ -126,7 +149,21 @@ async def cb_reject(callback: CallbackQuery) -> None:
             await callback.answer("频道不存在", show_alert=True)
             return
 
-        await ChannelService.reject_channel(channel_id)
+        status = channel.get("status")
+        if status and status != "pending":
+            await callback.answer("频道已处理", show_alert=True)
+            return
+
+        updated = await ChannelService.reject_channel(channel_id)
+        if not updated:
+            await callback.answer("频道已处理", show_alert=True)
+            return
+        logger.info(
+            "Channel rejected: id=%s title=%s by=%s",
+            channel_id,
+            channel["title"],
+            callback.from_user.id,
+        )
         await callback.message.edit_text(
             f"❌ 已拒绝: {escape_markdown(channel['title'])}",
             parse_mode="MarkdownV2",
