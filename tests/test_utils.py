@@ -1,4 +1,4 @@
-from src.utils import escape_markdown
+from src.utils import LineChunker, escape_markdown
 
 
 class TestEscapeMarkdown:
@@ -22,3 +22,21 @@ class TestEscapeMarkdown:
         assert r"\_" in result
         assert r"\(" in result
         assert r"\)" in result
+
+
+class TestLineChunker:
+    def test_simple_chunking(self):
+        chunker = LineChunker(limit=10)
+        out = []
+        out.extend(chunker.add_line("12345"))
+        out.extend(chunker.add_line("67890"))
+        out.extend(chunker.add_line("abc"))
+        out.extend(chunker.flush())
+        assert out == ["12345", "67890\nabc"]
+
+    def test_long_line_split(self):
+        chunker = LineChunker(limit=10)
+        out = []
+        out.extend(chunker.add_line("12345678901"))
+        out.extend(chunker.flush())
+        assert out == ["1234567890", "1"]

@@ -6,6 +6,7 @@ import aiosqlite
 import pytest
 
 import src.models.database as database
+import src.db_utils as db_utils
 import src.services.channel_service as channel_service
 from src.config import config as base_config
 
@@ -128,7 +129,7 @@ class TestChannelServiceMethods:
         db_path = tmp_path / "data" / "bot.db"
         cfg = replace(base_config, database_path=str(db_path))
         monkeypatch.setattr(database, "config", cfg)
-        monkeypatch.setattr(channel_service, "config", cfg)
+        monkeypatch.setattr(db_utils, "config", cfg)
         return str(db_path)
 
     @pytest.fixture

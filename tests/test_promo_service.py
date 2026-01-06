@@ -55,6 +55,15 @@ class TestBuildPromoText:
         result = _build_promo_text(channels)
         assert r"\_" in result
 
+    def test_username_escaped_in_url(self):
+        channels = [{
+            "title": "Channel",
+            "username": "test_channel",
+            "category": "其他"
+        }]
+        result = _build_promo_text(channels)
+        assert "https://t.me/test\\_channel" in result
+
     def test_chunk_lines_respects_limit(self):
         lines = ["12345", "67890", "abc"]
         chunks = _chunk_lines(lines, limit=10)
@@ -212,11 +221,11 @@ async def test_send_with_retry_generic_exception_exhausts(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_send_promo_to_all_no_channels(monkeypatch):
-    async def fake_get_channels():
-        return []
+    async def fake_get_count():
+        return 0
 
     monkeypatch.setattr(
-        promo_service.ChannelService, "get_approved_channels", fake_get_channels
+        promo_service.ChannelService, "get_approved_count", fake_get_count
     )
     sent, failed = await promo_service.send_promo_to_all(bot=DummyBot([]))
     assert sent == 0
@@ -228,23 +237,30 @@ async def test_send_promo_to_all_counts(monkeypatch):
     async def no_sleep(_):
         return None
 
-    async def fake_get_channels():
-        return [
-            {"chat_id": "1", "title": "A", "username": "a", "category": "其他"},
-            {"chat_id": "2", "title": "B", "username": "b", "category": "其他"},
-        ]
+    async def fake_get_count():
+        return 2
+
+    async def fake_iter(batch_size=500):
+        yield {"chat_id": "1", "title": "A", "username": "a", "category": "其他"}
+        yield {"chat_id": "2", "title": "B", "username": "b", "category": "其他"}
 
     messages = ["m1", "m2"]
     calls = {"count": 0}
 
-    async def fake_send(bot, chat_id: int, text: str):
+    async def fake_send(bot, chat_id: int, text: str, limiter=None):
         calls["count"] += 1
         return chat_id != 2
 
     monkeypatch.setattr(
-        promo_service.ChannelService, "get_approved_channels", fake_get_channels
+        promo_service.ChannelService, "get_approved_count", fake_get_count
     )
-    monkeypatch.setattr(promo_service, "_build_promo_messages", lambda _: messages)
+    monkeypatch.setattr(
+        promo_service.ChannelService, "iter_approved_channels", fake_iter
+    )
+    async def fake_build():
+        return messages
+
+    monkeypatch.setattr(promo_service, "_build_promo_messages_from_db", fake_build)
     monkeypatch.setattr(promo_service, "_send_with_retry", fake_send)
     monkeypatch.setattr(promo_service.asyncio, "sleep", no_sleep)
 
@@ -256,18 +272,25 @@ async def test_send_promo_to_all_counts(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_send_promo_to_all_invalid_chat_id(monkeypatch):
-    async def fake_get_channels():
-        return [
-            {"chat_id": "bad", "title": "A", "username": "a", "category": "其他"},
-        ]
+    async def fake_get_count():
+        return 1
 
-    async def fake_send(bot, chat_id: int, text: str):
+    async def fake_iter(batch_size=500):
+        yield {"chat_id": "bad", "title": "A", "username": "a", "category": "其他"}
+
+    async def fake_send(bot, chat_id: int, text: str, limiter=None):
         raise AssertionError("should not send")
 
     monkeypatch.setattr(
-        promo_service.ChannelService, "get_approved_channels", fake_get_channels
+        promo_service.ChannelService, "get_approved_count", fake_get_count
     )
-    monkeypatch.setattr(promo_service, "_build_promo_messages", lambda _: ["msg"])
+    monkeypatch.setattr(
+        promo_service.ChannelService, "iter_approved_channels", fake_iter
+    )
+    async def fake_build():
+        return ["msg"]
+
+    monkeypatch.setattr(promo_service, "_build_promo_messages_from_db", fake_build)
     monkeypatch.setattr(promo_service, "_send_with_retry", fake_send)
 
     sent, failed = await promo_service.send_promo_to_all(bot=DummyBot([]))

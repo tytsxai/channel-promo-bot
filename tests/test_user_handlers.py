@@ -145,7 +145,7 @@ async def test_cmd_start_and_help():
     msg = DummyMessage()
     await user_handlers.cmd_help(msg, bot)
     assert "/submit" in msg.answers[0]["text"]
-    assert msg.answers[0]["parse_mode"] == "Markdown"
+    assert msg.answers[0]["parse_mode"] == "HTML"
 
 
 @pytest.mark.asyncio
@@ -315,17 +315,21 @@ async def test_cmd_submit_database_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cmd_list_with_channels(monkeypatch):
-    async def fake_get_channels():
-        return [
-            {
-                "title": "Chan_1",
-                "username": "user_name",
-                "category": "科技数码",
-            }
-        ]
+    async def fake_get_count():
+        return 1
+
+    async def fake_iter(batch_size=500):
+        yield {
+            "title": "Chan_1",
+            "username": "user_name",
+            "category": "科技数码",
+        }
 
     monkeypatch.setattr(
-        user_handlers.ChannelService, "get_approved_channels", fake_get_channels
+        user_handlers.ChannelService, "get_approved_count", fake_get_count
+    )
+    monkeypatch.setattr(
+        user_handlers.ChannelService, "iter_approved_channels", fake_iter
     )
 
     msg = DummyMessage()
@@ -337,11 +341,11 @@ async def test_cmd_list_with_channels(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cmd_list_empty(monkeypatch):
-    async def fake_get_channels():
-        return []
+    async def fake_get_count():
+        return 0
 
     monkeypatch.setattr(
-        user_handlers.ChannelService, "get_approved_channels", fake_get_channels
+        user_handlers.ChannelService, "get_approved_count", fake_get_count
     )
 
     msg = DummyMessage()
@@ -351,11 +355,11 @@ async def test_cmd_list_empty(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cmd_list_error(monkeypatch):
-    async def fake_get_channels():
+    async def fake_get_count():
         raise RuntimeError("db error")
 
     monkeypatch.setattr(
-        user_handlers.ChannelService, "get_approved_channels", fake_get_channels
+        user_handlers.ChannelService, "get_approved_count", fake_get_count
     )
 
     msg = DummyMessage()

@@ -25,6 +25,14 @@ class TestConfig:
         assert config.rate_limit == 10
         assert config.rate_limit_window == 60
         assert config.rate_limit_cleanup == 300
+        assert config.rate_limit_storage in {"memory", "sqlite"}
+
+    def test_promo_tuning_defaults(self):
+        from src.config import config
+        assert config.promo_concurrency >= 1
+        assert config.promo_send_interval >= 0.0
+        assert config.promo_lock_ttl >= 60
+        assert config.promo_batch_size >= 1
 
     def test_logging_defaults(self):
         from src.config import config
@@ -80,6 +88,20 @@ class TestConfig:
         monkeypatch.setenv("BOT_TOKEN", "test")
         monkeypatch.setenv("ADMIN_IDS", "123")
         monkeypatch.setenv("LOG_FORMAT", "xml")
+        with pytest.raises(ConfigError):
+            Config.from_env()
+
+    def test_from_env_invalid_rate_limit_storage(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "test")
+        monkeypatch.setenv("ADMIN_IDS", "123")
+        monkeypatch.setenv("RATE_LIMIT_STORAGE", "redis")
+        with pytest.raises(ConfigError):
+            Config.from_env()
+
+    def test_from_env_invalid_promo_batch(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "test")
+        monkeypatch.setenv("ADMIN_IDS", "123")
+        monkeypatch.setenv("PROMO_BATCH_SIZE", "0")
         with pytest.raises(ConfigError):
             Config.from_env()
 
