@@ -20,6 +20,7 @@ if [[ "$DB_PATH" != /* ]]; then
 fi
 BACKUP_DIR="${PROJECT_DIR}/backups"
 RETENTION_DAYS=7
+VERIFY_BACKUP="${VERIFY_BACKUP:-0}"
 
 # 检查 sqlite3 或 python3 是否存在
 SQLITE3_AVAILABLE=1
@@ -72,6 +73,34 @@ if [ -f "$BACKUP_FILE" ]; then
 else
     echo "错误: 备份失败"
     exit 1
+fi
+
+# 可选：备份完整性校验
+if [ "$VERIFY_BACKUP" -eq 1 ]; then
+    echo "执行备份完整性校验..."
+    if [ "$SQLITE3_AVAILABLE" -eq 1 ]; then
+        CHECK_RESULT=$(sqlite3 "$BACKUP_FILE" "PRAGMA integrity_check;")
+    else
+        CHECK_RESULT=$(python3 - "$BACKUP_FILE" <<'PY'
+import sqlite3
+import sys
+
+path = sys.argv[1]
+conn = sqlite3.connect(path)
+try:
+    cur = conn.execute("PRAGMA integrity_check;")
+    row = cur.fetchone()
+    print(row[0] if row else "no_result")
+finally:
+    conn.close()
+PY
+)
+    fi
+    if [ "$CHECK_RESULT" != "ok" ]; then
+        echo "错误: 备份完整性校验失败: $CHECK_RESULT"
+        exit 1
+    fi
+    echo "完整性校验通过"
 fi
 
 # 清理旧备份（保留最近 N 天）

@@ -15,6 +15,18 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
+# 检查 .env 权限（避免密钥泄露）
+if [ -f ".env" ]; then
+    if stat --version >/dev/null 2>&1; then
+        ENV_PERM=$(stat -c %a .env)
+    else
+        ENV_PERM=$(stat -f %Lp .env)
+    fi
+    if [ -n "${ENV_PERM:-}" ] && [ $((ENV_PERM % 100)) -ne 0 ]; then
+        echo "警告: .env 权限为 ${ENV_PERM}，建议执行: chmod 600 .env"
+    fi
+fi
+
 # 确保备份目录存在
 mkdir -p backups
 
@@ -22,7 +34,8 @@ mkdir -p backups
 # ./scripts/backup_db.sh
 
 source .venv/bin/activate
-python main.py
+export PYTHONUNBUFFERED=1
+exec python main.py
 
 # 定时备份配置说明:
 # 添加以下 cron 任务实现每天凌晨 2:00 自动备份:
