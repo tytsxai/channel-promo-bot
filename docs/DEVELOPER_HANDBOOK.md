@@ -43,6 +43,8 @@ cp .env.example .env
 | `OPENAI_BASE_URL` | 否 | 自定义 OpenAI API 入口 |
 | `MIN_MEMBERS` | 否 | 最低成员数，默认700 |
 | `DATABASE_PATH` | 否 | 数据库路径 |
+| `INSTANCE_LOCK_ENABLED` | 否 | 单实例锁开关（避免 SQLite 并发写） |
+| `INSTANCE_LOCK_PATH` | 否 | 单实例锁文件路径 |
 | `PROMO_HOUR_UTC` | 否 | 推送小时(UTC) |
 | `PROMO_MINUTE` | 否 | 推送分钟 |
 | `PROMO_CONCURRENCY` | 否 | 推送并发数 |
@@ -61,6 +63,7 @@ cp .env.example .env
 | `LOG_BACKUP_COUNT` | 否 | 日志备份数量 |
 | `HEALTHCHECK_HOST` | 否 | 健康检查地址 |
 | `HEALTHCHECK_PORT` | 否 | 健康检查端口(0禁用) |
+| `HEALTHCHECK_TIMEOUT` | 否 | 健康检查超时(秒)，供脚本使用 |
 | `ENVIRONMENT` | 否 | 运行环境 |
 
 ---

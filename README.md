@@ -67,6 +67,10 @@ MIN_MEMBERS=700
 # 数据库路径
 DATABASE_PATH=data/bot.db
 
+# 单实例锁（强制单实例运行，避免 SQLite 并发写风险）
+INSTANCE_LOCK_ENABLED=true
+# INSTANCE_LOCK_PATH=data/bot.lock
+
 # 定时推送时间 (UTC时区)
 PROMO_HOUR_UTC=5
 PROMO_MINUTE=0
@@ -96,6 +100,7 @@ LOG_BACKUP_COUNT=5
 # 健康检查（0=禁用）
 HEALTHCHECK_HOST=127.0.0.1
 HEALTHCHECK_PORT=0
+# HEALTHCHECK_TIMEOUT=2
 
 # 运行环境
 ENVIRONMENT=production
@@ -176,6 +181,12 @@ python main.py
 ./scripts/backup_db.sh
 ```
 
+可选：启用备份完整性校验
+
+```bash
+VERIFY_BACKUP=1 ./scripts/backup_db.sh
+```
+
 ### 自动备份 (cron)
 
 ```bash
@@ -208,6 +219,12 @@ python -m ruff check .
 
 - `GET /health`：进程存活检查
 - `GET /ready`：包含数据库连接检查
+
+你可以使用脚本快速检测：
+
+```bash
+./scripts/healthcheck.sh
+```
 
 ## 运维与部署文档
 

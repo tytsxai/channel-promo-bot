@@ -26,6 +26,7 @@
 - [ ] 备份目录 `backups/` 存在
 - [ ] 脚本有执行权限
 - [ ] 确认仅运行单实例（SQLite 不适合多实例并发写）
+- [ ] 单实例锁已启用（`INSTANCE_LOCK_ENABLED=true`）
 
 ### 验证命令
 
@@ -36,6 +37,9 @@
 # 检查备份脚本
 ./scripts/backup_db.sh
 ls -la backups/
+
+# 检查健康检查脚本
+./scripts/healthcheck.sh
 ```
 
 ---
@@ -103,6 +107,12 @@ sudo systemctl status telegram-bot
 ./scripts/backup_db.sh
 ```
 
+可选：开启备份完整性校验
+
+```bash
+VERIFY_BACKUP=1 ./scripts/backup_db.sh
+```
+
 ### 配置自动备份
 
 ```bash
@@ -122,6 +132,8 @@ ls -la backups/
 # 恢复指定备份
 ./scripts/restore_db.sh backups/bot_backup_YYYYMMDD_HHMMSS.db
 ```
+
+> 恢复前务必先停止机器人进程，否则可能导致数据不一致或恢复失败。
 
 > 备份与恢复会读取 `.env` 中的 `DATABASE_PATH`，请确保配置正确。
 
@@ -196,3 +208,13 @@ curl http://127.0.0.1:8080/ready
 # 监控错误日志
 grep -E "(ERROR|CRITICAL)" logs/bot.log
 ```
+
+### 自动化健康检查 + 告警（示例）
+
+```bash
+# 每 5 分钟检查一次 /ready，失败则给管理员发告警
+*/5 * * * * /path/to/频道互推机器人-channel-promo-bot/scripts/healthcheck.sh || \
+  /path/to/频道互推机器人-channel-promo-bot/scripts/alert_admin.sh "❌ 互推机器人 /ready 失败"
+```
+
+> `alert_admin.sh` 使用 `.env` 中的 `BOT_TOKEN` 与 `ADMIN_IDS` 发送告警。

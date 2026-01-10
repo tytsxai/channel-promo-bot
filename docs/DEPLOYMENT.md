@@ -7,6 +7,8 @@
 - 准备 Python 3.11+ 环境（建议 3.11/3.12）
 - 创建 `.env` 并填写配置（参见 `.env.example`）
 - 确保 `data/` 与 `backups/` 目录可写
+- 默认启用单实例锁（`INSTANCE_LOCK_ENABLED=true`），避免 SQLite 并发写风险
+- 如在不支持文件锁的平台（如部分 Windows 环境），可设置 `INSTANCE_LOCK_ENABLED=false`
 - 如需健康检查，设置 `HEALTHCHECK_PORT` 为非 0
 - 生产环境建议使用密钥管理服务注入环境变量，不要提交 `.env`
 - 当前使用 SQLite，仅建议单实例运行；如需多实例请评估迁移至集中式数据库
@@ -65,6 +67,12 @@ sudo systemctl status telegram-bot
 ```bash
 curl http://127.0.0.1:8080/health
 curl http://127.0.0.1:8080/ready
+```
+
+也可以直接运行脚本（会读取 `.env`）：
+
+```bash
+./scripts/healthcheck.sh
 ```
 
 ## 6. 日志与备份

@@ -126,6 +126,9 @@
 **lock_service.py** - 分布式锁
 - 基于 SQLite 的轻量锁，用于多实例防重
 
+**instance_lock.py** - 单实例锁
+- 文件锁方式强制单实例运行
+
 **pending_submission_service.py** - 待验证提交持久化
 - 提交信息落库，重启与多实例一致性
 
