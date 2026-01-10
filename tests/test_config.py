@@ -44,6 +44,8 @@ class TestConfig:
         from src.config import config
         assert config.healthcheck_port == 0
         assert config.healthcheck_host == "127.0.0.1"
+        assert config.instance_lock_enabled is True
+        assert config.instance_lock_path
 
     def test_from_env_missing_token(self, monkeypatch):
         monkeypatch.delenv("BOT_TOKEN", raising=False)
@@ -111,3 +113,10 @@ class TestConfig:
         monkeypatch.setenv("HEALTHCHECK_PORT", "99999")
         with pytest.raises(ConfigError):
             Config.from_env()
+
+    def test_from_env_instance_lock_disabled(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "test")
+        monkeypatch.setenv("ADMIN_IDS", "123")
+        monkeypatch.setenv("INSTANCE_LOCK_ENABLED", "false")
+        cfg = Config.from_env()
+        assert cfg.instance_lock_enabled is False

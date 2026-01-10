@@ -148,6 +148,8 @@ class Config:
     log_backup_count: int
     healthcheck_host: str
     healthcheck_port: int
+    instance_lock_enabled: bool
+    instance_lock_path: str
     environment: str
 
     @classmethod
@@ -163,6 +165,10 @@ class Config:
 
         promo_hour = _get_int("PROMO_HOUR_UTC", 5, min_value=0, max_value=23)
         promo_minute = _get_int("PROMO_MINUTE", 0, min_value=0, max_value=59)
+        database_path = _get_str("DATABASE_PATH", "data/bot.db")
+        default_lock_path = os.path.join(os.path.dirname(database_path), "bot.lock")
+        if not os.path.dirname(default_lock_path):
+            default_lock_path = "bot.lock"
 
         return cls(
             bot_token=bot_token,
@@ -173,7 +179,7 @@ class Config:
             openai_model=_get_str("OPENAI_MODEL", "gpt-3.5-turbo"),
             openai_base_url=_get_optional_str("OPENAI_BASE_URL"),
             min_members=_get_int("MIN_MEMBERS", 700, min_value=1),
-            database_path=_get_str("DATABASE_PATH", "data/bot.db"),
+            database_path=database_path,
             promo_hour_utc=promo_hour,
             promo_minute=promo_minute,
             promo_concurrency=_get_int("PROMO_CONCURRENCY", 5, min_value=1),
@@ -194,6 +200,8 @@ class Config:
             log_backup_count=_get_int("LOG_BACKUP_COUNT", 5, min_value=0),
             healthcheck_host=_get_str("HEALTHCHECK_HOST", "127.0.0.1"),
             healthcheck_port=_get_int("HEALTHCHECK_PORT", 0, min_value=0, max_value=65535),
+            instance_lock_enabled=_get_bool("INSTANCE_LOCK_ENABLED", True),
+            instance_lock_path=_get_str("INSTANCE_LOCK_PATH", default_lock_path),
             environment=_get_str("ENVIRONMENT", "production"),
         )
 

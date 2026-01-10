@@ -22,6 +22,11 @@ from src.logging_setup import configure_logging
 from src.middleware import RateLimitMiddleware
 from src.models.database import init_db
 from src.services.health_server import start_health_server
+from src.services.instance_lock import (
+    InstanceLockError,
+    acquire_instance_lock,
+    release_instance_lock,
+)
 from src.services.lock_service import acquire_lock, refresh_lock, release_lock
 from src.services.promo_service import send_promo_to_all
 
@@ -29,6 +34,14 @@ configure_logging(config)
 logger = logging.getLogger(__name__)
 _INSTANCE_ID = f"{socket.gethostname()}:{os.getpid()}"
 _PROMO_LOCK_NAME = "scheduled_promo"
+
+
+class _CancelToken:
+    def __init__(self, *events: asyncio.Event):
+        self._events = events
+
+    def is_set(self) -> bool:
+        return any(event.is_set() for event in self._events)
 
 
 def _log_startup_summary() -> None:
@@ -41,7 +54,7 @@ def _log_startup_summary() -> None:
         "Startup config: env=%s db=%s promo=%02d:%02d UTC "
         "promo_concurrency=%s promo_interval=%ss promo_lock=%s promo_batch=%s "
         "rate_limit=%s/%ss rate_limit_storage=%s healthcheck=%s "
-        "log_format=%s log_file=%s openai=%s",
+        "log_format=%s log_file=%s openai=%s instance_lock=%s",
         config.environment,
         config.database_path,
         config.promo_hour_utc,
@@ -57,12 +70,15 @@ def _log_startup_summary() -> None:
         config.log_format,
         config.log_file or "stdout",
         "enabled" if config.openai_api_key else "disabled",
+        "enabled" if config.instance_lock_enabled else "disabled",
     )
 
 
 def _warn_on_risky_config() -> None:
     if config.environment.lower() == "production" and config.log_level == "DEBUG":
         logger.warning("LOG_LEVEL=DEBUG in production environment")
+    if config.environment.lower() == "production" and not config.instance_lock_enabled:
+        logger.warning("INSTANCE_LOCK_ENABLED=false in production environment")
     if config.healthcheck_port > 0 and config.healthcheck_host not in {
         "127.0.0.1",
         "localhost",
@@ -179,13 +195,21 @@ async def _refresh_promo_lock(
                 return
 
 
-async def scheduled_promo(bot: Bot):
+async def scheduled_promo(bot: Bot, shutdown_event: asyncio.Event | None = None):
     lock_acquired = False
     refresh_task: asyncio.Task | None = None
     stop_event: asyncio.Event | None = None
     lock_lost_event = asyncio.Event()  # Signals loss of leader lock to stop sending.
+    cancel_token = (
+        _CancelToken(lock_lost_event, shutdown_event)
+        if shutdown_event is not None
+        else lock_lost_event
+    )
 
     try:
+        if shutdown_event and shutdown_event.is_set():
+            logger.info("Scheduled promo skipped: shutdown in progress")
+            return
         if config.promo_lock_enabled:
             lock_acquired = await acquire_lock(
                 _PROMO_LOCK_NAME, _INSTANCE_ID, config.promo_lock_ttl
@@ -199,7 +223,7 @@ async def scheduled_promo(bot: Bot):
             )
 
         logger.info("Starting scheduled promo broadcast...")
-        sent, failed = await send_promo_to_all(bot, cancel_event=lock_lost_event)
+        sent, failed = await send_promo_to_all(bot, cancel_event=cancel_token)
         logger.info(f"Promo broadcast complete: {sent} sent, {failed} failed")
     except Exception as e:
         logger.exception(f"Scheduled promo failed: {e}")
@@ -218,84 +242,102 @@ async def main():
     _log_startup_summary()
     _warn_on_risky_config()
 
-    await init_db()
-    logger.info("Database initialized")
-
-    bot = Bot(token=config.bot_token)
-    try:
-        await _validate_bot(bot)
-        await _sync_bot_profile(bot)
-        await _sync_bot_commands(bot)
-    except Exception:
-        with contextlib.suppress(Exception):
-            await bot.session.close()
-        raise
-    dp = Dispatcher()
-
-    dp.message.middleware(
-        RateLimitMiddleware(
-            limit=config.rate_limit,
-            window=config.rate_limit_window,
-            cleanup_interval=config.rate_limit_cleanup,
-            storage=config.rate_limit_storage,
-        )
-    )
-
-    dp.include_router(user_handlers.router)
-    dp.include_router(admin_handlers.router)
-
-    scheduler = AsyncIOScheduler(timezone=UTC)
-    scheduler.add_job(
-        scheduled_promo,
-        "cron",
-        hour=config.promo_hour_utc,
-        minute=config.promo_minute,
-        args=[bot],
-        max_instances=1,
-        misfire_grace_time=300,
-    )
-    scheduler.start()
-    logger.info(
-        f"Scheduler started, promo at {config.promo_hour_utc}:{config.promo_minute:02d} UTC"
-    )
-
-    health_server = None
-    if config.healthcheck_port > 0:
-        health_server = await start_health_server(
-            config.healthcheck_host, config.healthcheck_port
-        )
-
-    shutdown_called = False
-
-    async def shutdown():
-        nonlocal shutdown_called
-        if shutdown_called:
-            return
-        shutdown_called = True
-        logger.info("Shutting down...")
+    instance_lock_handle = None
+    if config.instance_lock_enabled:
         try:
-            scheduler.shutdown(wait=False)
+            instance_lock_handle = acquire_instance_lock(config.instance_lock_path)
+            logger.info("Instance lock acquired: %s", config.instance_lock_path)
+        except InstanceLockError as exc:
+            logger.error("Instance lock failed: %s", exc)
+            raise SystemExit(1) from exc
+
+    try:
+        await init_db()
+        logger.info("Database initialized")
+
+        bot = Bot(token=config.bot_token)
+        try:
+            await _validate_bot(bot)
+            await _sync_bot_profile(bot)
+            await _sync_bot_commands(bot)
         except Exception:
-            logger.exception("Scheduler shutdown failed")
-        if health_server is not None:
-            health_server.close()
-            await health_server.wait_closed()
-        with contextlib.suppress(Exception):
-            await bot.session.close()
+            with contextlib.suppress(Exception):
+                await bot.session.close()
+            raise
+        dp = Dispatcher()
 
-    loop = asyncio.get_running_loop()
-    _set_event_loop_exception_handler(loop)
-    for sig in (signal.SIGINT, signal.SIGTERM):
+        dp.message.middleware(
+            RateLimitMiddleware(
+                limit=config.rate_limit,
+                window=config.rate_limit_window,
+                cleanup_interval=config.rate_limit_cleanup,
+                storage=config.rate_limit_storage,
+            )
+        )
+
+        dp.include_router(user_handlers.router)
+        dp.include_router(admin_handlers.router)
+
+        scheduler = AsyncIOScheduler(timezone=UTC)
+        shutdown_event = asyncio.Event()
+        scheduler.add_job(
+            scheduled_promo,
+            "cron",
+            hour=config.promo_hour_utc,
+            minute=config.promo_minute,
+            args=[bot, shutdown_event],
+            max_instances=1,
+            misfire_grace_time=300,
+        )
+        scheduler.start()
+        logger.info(
+            f"Scheduler started, promo at {config.promo_hour_utc}:{config.promo_minute:02d} UTC"
+        )
+
+        health_server = None
+        if config.healthcheck_port > 0:
+            health_server = await start_health_server(
+                config.healthcheck_host, config.healthcheck_port
+            )
+
+        shutdown_called = False
+
+        async def shutdown():
+            nonlocal shutdown_called, instance_lock_handle
+            if shutdown_called:
+                return
+            shutdown_called = True
+            logger.info("Shutting down...")
+            shutdown_event.set()
+            try:
+                scheduler.shutdown(wait=False)
+            except Exception:
+                logger.exception("Scheduler shutdown failed")
+            if health_server is not None:
+                health_server.close()
+                await health_server.wait_closed()
+            with contextlib.suppress(Exception):
+                await bot.session.close()
+            if instance_lock_handle is not None:
+                release_instance_lock(instance_lock_handle)
+                instance_lock_handle = None
+
+        loop = asyncio.get_running_loop()
+        _set_event_loop_exception_handler(loop)
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+            except NotImplementedError:
+                logger.warning("Signal handlers are not supported on this platform")
+
+        logger.info("Bot started")
         try:
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
-        except NotImplementedError:
-            logger.warning("Signal handlers are not supported on this platform")
-
-    logger.info("Bot started")
-    try:
-        await dp.start_polling(bot)
+            await dp.start_polling(bot)
+        finally:
+            await shutdown()
     finally:
-        await shutdown()
+        if instance_lock_handle is not None:
+            release_instance_lock(instance_lock_handle)
 
 
 if __name__ == "__main__":

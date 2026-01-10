@@ -120,7 +120,7 @@ async def send_promo_to_all(
 
     if cancel_event and cancel_event.is_set():
         failed_count = total - sent_count
-        logger.warning("Promo broadcast stopped early due to lock loss")
+        logger.warning("Promo broadcast stopped early due to cancellation")
 
     logger.info(f"Promo broadcast: {sent_count} sent, {failed_count} failed")
     return sent_count, failed_count
