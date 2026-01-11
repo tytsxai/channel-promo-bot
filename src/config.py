@@ -119,6 +119,17 @@ def _get_rate_limit_storage(value: str) -> str:
     return normalized
 
 
+def _validate_production_config(cfg: "Config") -> None:
+    if cfg.environment.lower() != "production":
+        return
+    if not cfg.instance_lock_enabled:
+        raise ConfigError("INSTANCE_LOCK_ENABLED must be true in production")
+    if cfg.healthcheck_port == 0:
+        raise ConfigError("HEALTHCHECK_PORT must be set in production")
+    if cfg.database_path == ":memory:":
+        raise ConfigError("DATABASE_PATH must not be ':memory:' in production")
+
+
 @dataclass(frozen=True)
 class Config:
     bot_token: str
@@ -137,6 +148,7 @@ class Config:
     promo_lock_enabled: bool
     promo_lock_ttl: int
     promo_batch_size: int
+    promo_shutdown_timeout: int
     rate_limit: int
     rate_limit_window: int
     rate_limit_cleanup: int
@@ -170,7 +182,7 @@ class Config:
         if not os.path.dirname(default_lock_path):
             default_lock_path = "bot.lock"
 
-        return cls(
+        cfg = cls(
             bot_token=bot_token,
             admin_ids=admin_ids,
             bot_description=_get_optional_str("BOT_DESCRIPTION"),
@@ -187,6 +199,9 @@ class Config:
             promo_lock_enabled=_get_bool("PROMO_LOCK_ENABLED", True),
             promo_lock_ttl=_get_int("PROMO_LOCK_TTL", 3600, min_value=60),
             promo_batch_size=_get_int("PROMO_BATCH_SIZE", 500, min_value=1),
+            promo_shutdown_timeout=_get_int(
+                "PROMO_SHUTDOWN_TIMEOUT", 30, min_value=0
+            ),
             rate_limit=_get_int("RATE_LIMIT", 10, min_value=1),
             rate_limit_window=_get_int("RATE_LIMIT_WINDOW", 60, min_value=1),
             rate_limit_cleanup=_get_int("RATE_LIMIT_CLEANUP", 300, min_value=1),
@@ -204,6 +219,8 @@ class Config:
             instance_lock_path=_get_str("INSTANCE_LOCK_PATH", default_lock_path),
             environment=_get_str("ENVIRONMENT", "production"),
         )
+        _validate_production_config(cfg)
+        return cfg
 
 
 config = Config.from_env()

@@ -33,6 +33,7 @@ class TestConfig:
         assert config.promo_send_interval >= 0.0
         assert config.promo_lock_ttl >= 60
         assert config.promo_batch_size >= 1
+        assert config.promo_shutdown_timeout >= 0
 
     def test_logging_defaults(self):
         from src.config import config
@@ -114,9 +115,43 @@ class TestConfig:
         with pytest.raises(ConfigError):
             Config.from_env()
 
+    def test_from_env_invalid_promo_shutdown_timeout(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "test")
+        monkeypatch.setenv("ADMIN_IDS", "123")
+        monkeypatch.setenv("PROMO_SHUTDOWN_TIMEOUT", "-1")
+        with pytest.raises(ConfigError):
+            Config.from_env()
+
     def test_from_env_instance_lock_disabled(self, monkeypatch):
         monkeypatch.setenv("BOT_TOKEN", "test")
         monkeypatch.setenv("ADMIN_IDS", "123")
+        monkeypatch.setenv("ENVIRONMENT", "test")
         monkeypatch.setenv("INSTANCE_LOCK_ENABLED", "false")
         cfg = Config.from_env()
         assert cfg.instance_lock_enabled is False
+
+    def test_from_env_production_requires_healthcheck(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "test")
+        monkeypatch.setenv("ADMIN_IDS", "123")
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("HEALTHCHECK_PORT", "0")
+        with pytest.raises(ConfigError):
+            Config.from_env()
+
+    def test_from_env_production_requires_instance_lock(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "test")
+        monkeypatch.setenv("ADMIN_IDS", "123")
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("HEALTHCHECK_PORT", "8080")
+        monkeypatch.setenv("INSTANCE_LOCK_ENABLED", "false")
+        with pytest.raises(ConfigError):
+            Config.from_env()
+
+    def test_from_env_production_disallows_memory_db(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "test")
+        monkeypatch.setenv("ADMIN_IDS", "123")
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("HEALTHCHECK_PORT", "8080")
+        monkeypatch.setenv("DATABASE_PATH", ":memory:")
+        with pytest.raises(ConfigError):
+            Config.from_env()

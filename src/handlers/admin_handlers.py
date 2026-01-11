@@ -33,9 +33,17 @@ async def _show_pending_page(target: Message | CallbackQuery, page: int) -> None
     """显示待审核频道的指定页"""
     if page < 0:
         page = 0
-    channels, total = await ChannelService.get_pending_channels_paginated(
-        page=page, per_page=PENDING_PER_PAGE
-    )
+    try:
+        channels, total = await ChannelService.get_pending_channels_paginated(
+            page=page, per_page=PENDING_PER_PAGE
+        )
+    except Exception as exc:
+        logger.error("Failed to load pending channels: %s", exc)
+        if isinstance(target, CallbackQuery):
+            await target.answer("❌ 获取待审核列表失败", show_alert=True)
+        else:
+            await target.answer("❌ 获取待审核列表失败")
+        return
 
     if total == 0:
         text = "📭 暂无待审核的频道"
@@ -179,8 +187,13 @@ async def cmd_stats(message: Message) -> None:
     if not is_admin(message.from_user.id):
         return
 
-    pending_count = await ChannelService.get_pending_count()
-    approved_count = await ChannelService.get_approved_count()
+    try:
+        pending_count = await ChannelService.get_pending_count()
+        approved_count = await ChannelService.get_approved_count()
+    except Exception as exc:
+        logger.error("Failed to load stats: %s", exc)
+        await message.answer("❌ 获取统计信息失败，请稍后重试")
+        return
 
     await message.answer(
         f"📊 *系统统计*\n\n✅ 已通过: {approved_count}\n⏳ 待审核: {pending_count}",

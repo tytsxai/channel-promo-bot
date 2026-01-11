@@ -34,6 +34,7 @@ configure_logging(config)
 logger = logging.getLogger(__name__)
 _INSTANCE_ID = f"{socket.gethostname()}:{os.getpid()}"
 _PROMO_LOCK_NAME = "scheduled_promo"
+_ACTIVE_PROMO_TASK: asyncio.Task | None = None
 
 
 class _CancelToken:
@@ -196,6 +197,11 @@ async def _refresh_promo_lock(
 
 
 async def scheduled_promo(bot: Bot, shutdown_event: asyncio.Event | None = None):
+    global _ACTIVE_PROMO_TASK
+    current_task = asyncio.current_task()
+    if current_task is not None:
+        _ACTIVE_PROMO_TASK = current_task
+
     lock_acquired = False
     refresh_task: asyncio.Task | None = None
     stop_event: asyncio.Event | None = None
@@ -228,6 +234,8 @@ async def scheduled_promo(bot: Bot, shutdown_event: asyncio.Event | None = None)
     except Exception as e:
         logger.exception(f"Scheduled promo failed: {e}")
     finally:
+        if current_task is not None and _ACTIVE_PROMO_TASK is current_task:
+            _ACTIVE_PROMO_TASK = None
         if stop_event is not None:
             stop_event.set()
         if refresh_task is not None:
@@ -236,6 +244,18 @@ async def scheduled_promo(bot: Bot, shutdown_event: asyncio.Event | None = None)
         if lock_acquired:
             with contextlib.suppress(Exception):
                 await release_lock(_PROMO_LOCK_NAME, _INSTANCE_ID)
+
+
+async def _await_active_promo_shutdown(timeout: int) -> None:
+    if timeout <= 0:
+        return
+    task = _ACTIVE_PROMO_TASK
+    if task is None or task.done() or task is asyncio.current_task():
+        return
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+    except asyncio.TimeoutError:
+        logger.warning("Timed out waiting for scheduled promo to finish")
 
 
 async def main():
@@ -313,6 +333,10 @@ async def main():
                 scheduler.shutdown(wait=False)
             except Exception:
                 logger.exception("Scheduler shutdown failed")
+            try:
+                await _await_active_promo_shutdown(config.promo_shutdown_timeout)
+            except Exception:
+                logger.exception("Failed while waiting for promo shutdown")
             if health_server is not None:
                 health_server.close()
                 await health_server.wait_closed()
