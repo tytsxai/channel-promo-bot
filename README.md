@@ -82,6 +82,8 @@ PROMO_LOCK_ENABLED=true
 PROMO_LOCK_TTL=3600
 # 推送读取分页大小
 PROMO_BATCH_SIZE=500
+# 关闭服务时等待推送任务结束的最大时间(秒)，0 表示不等待
+PROMO_SHUTDOWN_TIMEOUT=30
 
 # 速率限制配置
 RATE_LIMIT=10
@@ -97,9 +99,9 @@ LOG_FORMAT=text
 LOG_MAX_BYTES=10485760
 LOG_BACKUP_COUNT=5
 
-# 健康检查（0=禁用）
+# 健康检查（生产环境必须启用；非生产可设置为 0 禁用）
 HEALTHCHECK_HOST=127.0.0.1
-HEALTHCHECK_PORT=0
+HEALTHCHECK_PORT=8080
 # HEALTHCHECK_TIMEOUT=2
 
 # 运行环境
@@ -215,7 +217,7 @@ python -m ruff check .
 
 ## 健康检查
 
-当设置 `HEALTHCHECK_PORT` 为非 0 时，服务会启动一个轻量 HTTP 健康检查端点：
+生产环境必须启用健康检查（`HEALTHCHECK_PORT` 需为非 0），服务会启动一个轻量 HTTP 健康检查端点：
 
 - `GET /health`：进程存活检查
 - `GET /ready`：包含数据库连接检查

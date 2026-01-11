@@ -27,6 +27,8 @@
 - [ ] 脚本有执行权限
 - [ ] 确认仅运行单实例（SQLite 不适合多实例并发写）
 - [ ] 单实例锁已启用（`INSTANCE_LOCK_ENABLED=true`）
+- [ ] 已设置健康检查端口（`HEALTHCHECK_PORT` 非 0）
+- [ ] 已配置自动备份与告警（cron 或 systemd）
 
 ### 验证命令
 
@@ -218,3 +220,11 @@ grep -E "(ERROR|CRITICAL)" logs/bot.log
 ```
 
 > `alert_admin.sh` 使用 `.env` 中的 `BOT_TOKEN` 与 `ADMIN_IDS` 发送告警。
+
+### 备份新鲜度检查 + 告警（示例）
+
+```bash
+# 每天早上 9:10 检查最近备份是否在 36 小时内
+10 9 * * * BACKUP_MAX_AGE_HOURS=36 /path/to/频道互推机器人-channel-promo-bot/scripts/check_backup_freshness.sh || \
+  /path/to/频道互推机器人-channel-promo-bot/scripts/alert_admin.sh "❌ 互推机器人备份过旧或缺失"
+```

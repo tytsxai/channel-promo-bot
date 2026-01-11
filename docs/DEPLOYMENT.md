@@ -9,9 +9,10 @@
 - 确保 `data/` 与 `backups/` 目录可写
 - 默认启用单实例锁（`INSTANCE_LOCK_ENABLED=true`），避免 SQLite 并发写风险
 - 如在不支持文件锁的平台（如部分 Windows 环境），可设置 `INSTANCE_LOCK_ENABLED=false`
-- 如需健康检查，设置 `HEALTHCHECK_PORT` 为非 0
+- 生产环境必须启用健康检查，设置 `HEALTHCHECK_PORT` 为非 0（建议仅绑定 `127.0.0.1`）
 - 生产环境建议使用密钥管理服务注入环境变量，不要提交 `.env`
 - 当前使用 SQLite，仅建议单实例运行；如需多实例请评估迁移至集中式数据库
+ - 生产环境将强制开启单实例锁（`INSTANCE_LOCK_ENABLED=true`）
 
 ## 2. 安装依赖
 
@@ -79,6 +80,7 @@ curl http://127.0.0.1:8080/ready
 
 - 推荐设置 `LOG_FILE=logs/bot.log` 进行日志落盘
 - 使用 `scripts/backup_db.sh` 定期备份数据库
+- 可使用 `scripts/check_backup_freshness.sh` 检查备份是否按期产出
 
 ## 7. 回滚策略
 
