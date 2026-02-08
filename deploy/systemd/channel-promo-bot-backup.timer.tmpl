@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily backup timer for channel-promo-bot
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+Unit={{SERVICE_NAME}}-backup.service
+
+[Install]
+WantedBy=timers.target

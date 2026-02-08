@@ -1,0 +1,8 @@
+[Unit]
+Description=Backup freshness check for channel-promo-bot
+
+[Service]
+Type=oneshot
+User={{RUN_USER}}
+WorkingDirectory={{APP_DIR}}
+ExecStart=/bin/bash -lc 'cd "{{APP_DIR}}" && BACKUP_MAX_AGE_HOURS=36 ./scripts/check_backup_freshness.sh || ./scripts/alert_admin.sh "❌ {{SERVICE_NAME}} 备份过旧或缺失"'

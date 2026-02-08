@@ -1,0 +1,20 @@
+[Unit]
+Description=Telegram Channel Promo Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{RUN_USER}}
+WorkingDirectory={{APP_DIR}}
+EnvironmentFile={{APP_DIR}}/.env
+ExecStart={{APP_DIR}}/run.sh
+Restart=always
+RestartSec=10
+TimeoutStopSec=60
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

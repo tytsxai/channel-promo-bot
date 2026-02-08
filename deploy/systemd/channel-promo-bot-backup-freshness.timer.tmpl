@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup freshness timer for channel-promo-bot
+
+[Timer]
+OnCalendar=*-*-* 09:10:00
+Persistent=true
+Unit={{SERVICE_NAME}}-backup-freshness.service
+
+[Install]
+WantedBy=timers.target
