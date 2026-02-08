@@ -96,10 +96,16 @@ curl http://127.0.0.1:8080/metrics
 ./scripts/preflight.sh
 ```
 
+如需临时跳过测试或静态检查，可通过环境变量控制：
+
+```bash
+PREFLIGHT_SKIP_TESTS=1 PREFLIGHT_SKIP_LINT=1 ./scripts/preflight.sh
+```
+
 ## 6. 日志与备份
 
 - 推荐设置 `LOG_FILE=logs/bot.log` 进行日志落盘
-- 使用 `scripts/backup_db.sh` 定期备份数据库
+- 使用 `scripts/backup_db.sh` 定期备份数据库（支持 `BACKUP_DIR` 与 `BACKUP_RETENTION_DAYS`）
 - 恢复时使用 `scripts/restore_db.sh`（已包含备份文件完整性校验与运行中保护）
 - 可使用 `scripts/check_backup_freshness.sh` 检查备份是否按期产出
 - 可使用 `scripts/sync_backup_remote.sh` 同步到异机（建议生产启用）

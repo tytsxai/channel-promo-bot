@@ -115,6 +115,10 @@ ALERT_COOLDOWN_SECONDS=300
 # BACKUP_REMOTE_PORT=22
 # BACKUP_REMOTE_DIR=/data/channel-promo-bot-backups
 
+# 可选：备份目录与保留策略
+# BACKUP_DIR=backups
+# BACKUP_RETENTION_DAYS=7
+
 # 运行环境
 ENVIRONMENT=production
 ```
@@ -252,6 +256,12 @@ HEALTHCHECK_ENDPOINT=metrics ./scripts/healthcheck.sh
 
 ```bash
 ./scripts/preflight.sh
+```
+
+可按需跳过部分步骤（例如 CI 中）：
+
+```bash
+PREFLIGHT_SKIP_TESTS=1 PREFLIGHT_SKIP_LINT=1 ./scripts/preflight.sh
 ```
 
 ## 推荐生产部署（systemd）

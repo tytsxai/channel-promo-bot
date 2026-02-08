@@ -156,7 +156,8 @@ ls -la backups/
 ### 备份保留策略
 
 - 默认保留最近 7 天的备份
-- 可在 `scripts/backup_db.sh` 中修改 `RETENTION_DAYS` 变量
+- 可通过 `.env` 配置 `BACKUP_RETENTION_DAYS` 调整保留天数
+- 可通过 `.env` 配置 `BACKUP_DIR` 指定备份目录
 
 ---
 
