@@ -5,8 +5,8 @@ from dataclasses import replace
 import aiosqlite
 import pytest
 
-import src.models.database as database
 import src.db_utils as db_utils
+import src.models.database as database
 import src.services.channel_service as channel_service
 from src.config import config as base_config
 

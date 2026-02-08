@@ -70,9 +70,20 @@ async def _migration_v2(db: aiosqlite.Connection) -> None:
     """)
 
 
+async def _migration_v3(db: aiosqlite.Connection) -> None:
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS metrics (
+            name TEXT PRIMARY KEY,
+            value INTEGER NOT NULL DEFAULT 0,
+            updated_at REAL NOT NULL
+        )
+    """)
+
+
 MIGRATIONS: list[tuple[int, MigrationFn]] = [
     (1, _migration_v1),
     (2, _migration_v2),
+    (3, _migration_v3),
 ]
 
 

@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from src.config import Config, ConfigError
@@ -39,7 +41,8 @@ class TestConfig:
         from src.config import config
         assert config.log_level == "INFO"
         assert config.log_format == "text"
-        assert config.log_file is None
+        expected = os.environ.get("LOG_FILE")
+        assert config.log_file == expected
 
     def test_healthcheck_defaults(self):
         from src.config import config
@@ -47,6 +50,8 @@ class TestConfig:
         assert config.healthcheck_host == "127.0.0.1"
         assert config.instance_lock_enabled is True
         assert config.instance_lock_path
+        assert config.alert_on_critical is True
+        assert config.alert_cooldown_seconds >= 0
 
     def test_from_env_missing_token(self, monkeypatch):
         monkeypatch.delenv("BOT_TOKEN", raising=False)
@@ -153,5 +158,12 @@ class TestConfig:
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("HEALTHCHECK_PORT", "8080")
         monkeypatch.setenv("DATABASE_PATH", ":memory:")
+        with pytest.raises(ConfigError):
+            Config.from_env()
+
+    def test_from_env_invalid_alert_cooldown(self, monkeypatch):
+        monkeypatch.setenv("BOT_TOKEN", "test")
+        monkeypatch.setenv("ADMIN_IDS", "123")
+        monkeypatch.setenv("ALERT_COOLDOWN_SECONDS", "-1")
         with pytest.raises(ConfigError):
             Config.from_env()

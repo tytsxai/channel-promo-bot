@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from src.config import config
 from src.services.channel_service import ChannelService
+from src.services.metrics_service import increment_metric
 from src.services.pending_submission_service import PendingSubmissionService
 from src.utils import LineChunker, escape_markdown
 
@@ -254,6 +255,7 @@ async def _verify_and_submit(
         return False
 
     if member_count < config.min_members:
+        await increment_metric("submit_rejected_low_members_total")
         await message.answer(
             f"❌ 频道成员数不足\n\n"
             f"当前: {member_count} 人\n"
@@ -271,6 +273,7 @@ async def _verify_and_submit(
             submitted_by=user_id,
         )
         if channel_id is None:
+            await increment_metric("submit_duplicate_total")
             await message.answer("⚠️ 该频道已提交过，请勿重复提交")
             return True
     except Exception as e:
@@ -279,6 +282,7 @@ async def _verify_and_submit(
         return False
 
     logger.info(f"Channel submitted: {username} by user {user_id}")
+    await increment_metric("submit_success_total")
     await message.answer(
         f"✅ 频道提交成功！\n\n"
         f"📢 {chat.title}\n"

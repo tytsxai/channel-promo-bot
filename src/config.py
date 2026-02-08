@@ -119,7 +119,7 @@ def _get_rate_limit_storage(value: str) -> str:
     return normalized
 
 
-def _validate_production_config(cfg: "Config") -> None:
+def _validate_production_config(cfg: Config) -> None:
     if cfg.environment.lower() != "production":
         return
     if not cfg.instance_lock_enabled:
@@ -162,6 +162,8 @@ class Config:
     healthcheck_port: int
     instance_lock_enabled: bool
     instance_lock_path: str
+    alert_on_critical: bool
+    alert_cooldown_seconds: int
     environment: str
 
     @classmethod
@@ -214,9 +216,15 @@ class Config:
             log_max_bytes=_get_int("LOG_MAX_BYTES", 10_485_760, min_value=1),
             log_backup_count=_get_int("LOG_BACKUP_COUNT", 5, min_value=0),
             healthcheck_host=_get_str("HEALTHCHECK_HOST", "127.0.0.1"),
-            healthcheck_port=_get_int("HEALTHCHECK_PORT", 0, min_value=0, max_value=65535),
+            healthcheck_port=_get_int(
+                "HEALTHCHECK_PORT", 0, min_value=0, max_value=65535
+            ),
             instance_lock_enabled=_get_bool("INSTANCE_LOCK_ENABLED", True),
             instance_lock_path=_get_str("INSTANCE_LOCK_PATH", default_lock_path),
+            alert_on_critical=_get_bool("ALERT_ON_CRITICAL", True),
+            alert_cooldown_seconds=_get_int(
+                "ALERT_COOLDOWN_SECONDS", 300, min_value=0
+            ),
             environment=_get_str("ENVIRONMENT", "production"),
         )
         _validate_production_config(cfg)

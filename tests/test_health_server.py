@@ -39,6 +39,20 @@ async def test_handle_path_not_found():
     assert payload["status"] == "not_found"
 
 
+@pytest.mark.asyncio
+async def test_handle_path_metrics(monkeypatch):
+    async def fake_get_metrics_snapshot():
+        return {"promo_run_total": 2, "submit_success_total": 5}
+
+    monkeypatch.setattr(
+        health_server, "get_metrics_snapshot", fake_get_metrics_snapshot
+    )
+    status, payload = await health_server._handle_path("/metrics")
+    assert status == 200
+    assert payload["status"] == "ok"
+    assert payload["metrics"]["promo_run_total"] == 2
+
+
 def test_json_response():
     response = health_server._json_response(200, {"status": "ok"})
     assert response.startswith(b"HTTP/1.1 200 OK")

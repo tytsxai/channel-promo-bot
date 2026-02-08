@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from src.config import config
 from src.services.channel_service import get_db
+from src.services.metrics_service import get_metrics_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,10 @@ async def _handle_path(path: str) -> tuple[int, dict]:
         status = "ok" if db_ok else "degraded"
         code = 200 if db_ok else 503
         return code, {"status": status, "db_ok": db_ok, "time": now}
+
+    if path == "/metrics":
+        metrics = await get_metrics_snapshot()
+        return 200, {"status": "ok", "time": now, "metrics": metrics}
 
     return 404, {"status": "not_found", "time": now}
 

@@ -55,7 +55,8 @@ def _log_startup_summary() -> None:
         "Startup config: env=%s db=%s promo=%02d:%02d UTC "
         "promo_concurrency=%s promo_interval=%ss promo_lock=%s promo_batch=%s "
         "rate_limit=%s/%ss rate_limit_storage=%s healthcheck=%s "
-        "log_format=%s log_file=%s openai=%s instance_lock=%s",
+        "log_format=%s log_file=%s openai=%s instance_lock=%s "
+        "alert_on_critical=%s alert_cooldown=%ss",
         config.environment,
         config.database_path,
         config.promo_hour_utc,
@@ -72,6 +73,8 @@ def _log_startup_summary() -> None:
         config.log_file or "stdout",
         "enabled" if config.openai_api_key else "disabled",
         "enabled" if config.instance_lock_enabled else "disabled",
+        "enabled" if config.alert_on_critical else "disabled",
+        config.alert_cooldown_seconds,
     )
 
 
@@ -186,7 +189,7 @@ async def _refresh_promo_lock(
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=interval)
             return
-        except asyncio.TimeoutError:
+        except TimeoutError:
             refreshed = await refresh_lock(
                 _PROMO_LOCK_NAME, _INSTANCE_ID, config.promo_lock_ttl
             )
@@ -254,7 +257,7 @@ async def _await_active_promo_shutdown(timeout: int) -> None:
         return
     try:
         await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("Timed out waiting for scheduled promo to finish")
 
 

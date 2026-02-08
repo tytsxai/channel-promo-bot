@@ -41,6 +41,11 @@ class TestDatabaseInit:
             )
             row = await cursor.fetchone()
             assert row is not None
+            cursor = await db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='metrics'"
+            )
+            row = await cursor.fetchone()
+            assert row is not None
 
     @pytest.mark.asyncio
     async def test_init_db_creates_indexes_and_version(self, temp_db_path):
@@ -57,4 +62,4 @@ class TestDatabaseInit:
 
             cursor = await db.execute("PRAGMA user_version")
             row = await cursor.fetchone()
-            assert row[0] == 2
+            assert row[0] == 3

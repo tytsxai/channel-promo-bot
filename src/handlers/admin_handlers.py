@@ -8,6 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from src.config import config
 from src.services.ai_classifier import classify_channel
 from src.services.channel_service import ChannelService
+from src.services.metrics_service import increment_metric
 from src.utils import escape_markdown
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,7 @@ async def cb_approve(callback: CallbackQuery) -> None:
             callback.from_user.id,
             category,
         )
+        await increment_metric("admin_approve_total")
 
         await callback.message.edit_text(
             f"✅ 已通过: {escape_markdown(channel['title'])}\n分类: {escape_markdown(category)}",
@@ -172,6 +174,7 @@ async def cb_reject(callback: CallbackQuery) -> None:
             channel["title"],
             callback.from_user.id,
         )
+        await increment_metric("admin_reject_total")
         await callback.message.edit_text(
             f"❌ 已拒绝: {escape_markdown(channel['title'])}",
             parse_mode="MarkdownV2",

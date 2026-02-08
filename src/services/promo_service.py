@@ -13,6 +13,7 @@ from aiogram.exceptions import (
 
 from src.config import config
 from src.services.channel_service import ChannelService
+from src.services.metrics_service import record_promo_run
 from src.utils import LineChunker, chunk_lines, escape_markdown
 
 logger = logging.getLogger(__name__)
@@ -49,9 +50,11 @@ async def send_promo_to_all(
     total = await ChannelService.get_approved_count()
     if total == 0:
         logger.info("No approved channels, skipping promo")
+        await record_promo_run(0, 0, 0, cancelled=False, empty_run=True)
         return 0, 0
     if cancel_event and cancel_event.is_set():
         logger.warning("Promo broadcast cancelled before start")
+        await record_promo_run(total, 0, total, cancelled=True, empty_run=False)
         return 0, total
 
     # Build once and broadcast to all channels to avoid repeated DB scans.
@@ -123,6 +126,13 @@ async def send_promo_to_all(
         logger.warning("Promo broadcast stopped early due to cancellation")
 
     logger.info(f"Promo broadcast: {sent_count} sent, {failed_count} failed")
+    await record_promo_run(
+        total,
+        sent_count,
+        failed_count,
+        cancelled=bool(cancel_event and cancel_event.is_set()),
+        empty_run=False,
+    )
     return sent_count, failed_count
 
 
