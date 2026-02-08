@@ -18,9 +18,17 @@ DB_PATH="${DATABASE_PATH:-${PROJECT_DIR}/data/bot.db}"
 if [[ "$DB_PATH" != /* ]]; then
     DB_PATH="${PROJECT_DIR}/${DB_PATH}"
 fi
-BACKUP_DIR="${PROJECT_DIR}/backups"
-RETENTION_DAYS=7
+BACKUP_DIR="${BACKUP_DIR:-${PROJECT_DIR}/backups}"
+if [[ "$BACKUP_DIR" != /* ]]; then
+    BACKUP_DIR="${PROJECT_DIR}/${BACKUP_DIR}"
+fi
+RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
 VERIFY_BACKUP="${VERIFY_BACKUP:-0}"
+
+if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]]; then
+    echo "错误: BACKUP_RETENTION_DAYS 必须是非负整数，当前值: $RETENTION_DAYS" >&2
+    exit 1
+fi
 
 # 检查 sqlite3 或 python3 是否存在
 SQLITE3_AVAILABLE=1

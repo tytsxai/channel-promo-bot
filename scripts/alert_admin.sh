@@ -17,6 +17,14 @@ fi
 BOT_TOKEN="${BOT_TOKEN:-}"
 ADMIN_IDS="${ADMIN_IDS:-}"
 
+_tmp_py_out=""
+cleanup() {
+    if [ -n "$_tmp_py_out" ] && [ -f "$_tmp_py_out" ]; then
+        rm -f "$_tmp_py_out"
+    fi
+}
+trap cleanup EXIT
+
 if [ -z "$BOT_TOKEN" ] || [ -z "$ADMIN_IDS" ]; then
     echo "缺少 BOT_TOKEN 或 ADMIN_IDS，无法发送告警" >&2
     exit 1
@@ -138,11 +146,14 @@ for admin_id in "${admin_list[@]}"; do
             failed_count=$((failed_count + 1))
         fi
     else
-        if send_with_python "$admin_id" >/tmp/alert_admin_py.out 2>&1; then
+        if [ -z "$_tmp_py_out" ]; then
+            _tmp_py_out="$(mktemp "${TMPDIR:-/tmp}/alert_admin_py.XXXXXX")"
+        fi
+        if send_with_python "$admin_id" >"$_tmp_py_out" 2>&1; then
             sent_count=$((sent_count + 1))
         else
             failed_count=$((failed_count + 1))
-            echo "admin ${admin_id}: $(cat /tmp/alert_admin_py.out)" >&2
+            echo "admin ${admin_id}: $(cat "$_tmp_py_out")" >&2
         fi
     fi
 done

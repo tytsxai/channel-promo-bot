@@ -37,26 +37,127 @@ check_required() {
     fi
 }
 
+to_lower() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+to_upper() {
+    printf '%s' "$1" | tr '[:lower:]' '[:upper:]'
+}
+
+is_false_value() {
+    case "$(to_lower "$1")" in
+        0|false|no|n|off)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_true_value() {
+    case "$(to_lower "$1")" in
+        1|true|yes|y|on)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 check_required BOT_TOKEN
 check_required ADMIN_IDS
 
-if [ "${ENVIRONMENT:-production}" = "production" ]; then
+if [ -n "${ADMIN_IDS:-}" ] && ! printf '%s' "$ADMIN_IDS" | grep -Eq '^[0-9]+([[:space:]]*,[[:space:]]*[0-9]+)*$'; then
+    echo "❌ ADMIN_IDS 格式错误，应为逗号分隔的数字列表" >&2
+    errors=$((errors + 1))
+fi
+
+environment_normalized="$(to_lower "${ENVIRONMENT:-production}")"
+
+if [ -n "${DATABASE_PATH:-}" ] && [ "${DATABASE_PATH}" = ":memory:" ] && [ "$environment_normalized" = "production" ]; then
+    echo "❌ 生产环境禁止 DATABASE_PATH=:memory:" >&2
+    errors=$((errors + 1))
+fi
+
+if [ -n "${PROMO_LOCK_TTL:-}" ] && ! printf '%s' "$PROMO_LOCK_TTL" | grep -Eq '^[0-9]+$'; then
+    echo "❌ PROMO_LOCK_TTL 必须是整数" >&2
+    errors=$((errors + 1))
+fi
+
+if [ -n "${PROMO_LOCK_TTL:-}" ] && [ "$PROMO_LOCK_TTL" -lt 60 ] 2>/dev/null; then
+    echo "❌ PROMO_LOCK_TTL 建议 >= 60，当前: $PROMO_LOCK_TTL" >&2
+    errors=$((errors + 1))
+fi
+
+if [ -n "${PROMO_CONCURRENCY:-}" ] && ! printf '%s' "$PROMO_CONCURRENCY" | grep -Eq '^[1-9][0-9]*$'; then
+    echo "❌ PROMO_CONCURRENCY 必须是正整数" >&2
+    errors=$((errors + 1))
+fi
+
+if [ -n "${PROMO_BATCH_SIZE:-}" ] && ! printf '%s' "$PROMO_BATCH_SIZE" | grep -Eq '^[1-9][0-9]*$'; then
+    echo "❌ PROMO_BATCH_SIZE 必须是正整数" >&2
+    errors=$((errors + 1))
+fi
+
+rate_limit_storage_normalized="$(to_lower "${RATE_LIMIT_STORAGE:-}")"
+if [ -n "${RATE_LIMIT_STORAGE:-}" ] && [ "$rate_limit_storage_normalized" != "memory" ] && [ "$rate_limit_storage_normalized" != "sqlite" ]; then
+    echo "❌ RATE_LIMIT_STORAGE 只能为 memory 或 sqlite" >&2
+    errors=$((errors + 1))
+fi
+
+log_level_normalized="$(to_upper "${LOG_LEVEL:-}")"
+if [ -n "${LOG_LEVEL:-}" ] && ! printf '%s' "$log_level_normalized" | grep -Eq '^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$'; then
+    echo "❌ LOG_LEVEL 非法: ${LOG_LEVEL}" >&2
+    errors=$((errors + 1))
+fi
+
+log_format_normalized="$(to_lower "${LOG_FORMAT:-}")"
+if [ -n "${LOG_FORMAT:-}" ] && [ "$log_format_normalized" != "text" ] && [ "$log_format_normalized" != "json" ]; then
+    echo "❌ LOG_FORMAT 只能为 text 或 json" >&2
+    errors=$((errors + 1))
+fi
+
+if [ "$environment_normalized" = "production" ]; then
     if [ "${HEALTHCHECK_PORT:-0}" = "0" ]; then
         echo "❌ 生产环境必须启用 HEALTHCHECK_PORT" >&2
         errors=$((errors + 1))
     fi
-    if [ "${INSTANCE_LOCK_ENABLED:-true}" = "false" ]; then
+    if is_false_value "${INSTANCE_LOCK_ENABLED:-true}"; then
         echo "❌ 生产环境必须开启 INSTANCE_LOCK_ENABLED" >&2
         errors=$((errors + 1))
     fi
 fi
 
-if [ "${ALERT_ON_CRITICAL:-true}" != "true" ]; then
+if ! is_true_value "${ALERT_ON_CRITICAL:-true}"; then
     echo "⚠️ 建议生产启用 ALERT_ON_CRITICAL=true" >&2
 fi
 
 if [ "${HEALTHCHECK_HOST:-127.0.0.1}" != "127.0.0.1" ] && [ "${HEALTHCHECK_HOST:-127.0.0.1}" != "localhost" ] && [ "${HEALTHCHECK_HOST:-127.0.0.1}" != "::1" ]; then
     echo "⚠️ HEALTHCHECK_HOST 非环回地址，确认未暴露到公网: ${HEALTHCHECK_HOST}" >&2
+fi
+
+if [ "${HEALTHCHECK_PORT:-0}" != "0" ] && [ -n "${HEALTHCHECK_PORT:-}" ]; then
+    if ! printf '%s' "$HEALTHCHECK_PORT" | grep -Eq '^[0-9]+$'; then
+        echo "❌ HEALTHCHECK_PORT 必须是整数" >&2
+        errors=$((errors + 1))
+    elif [ "$HEALTHCHECK_PORT" -lt 1 ] || [ "$HEALTHCHECK_PORT" -gt 65535 ]; then
+        echo "❌ HEALTHCHECK_PORT 超出范围(1-65535): ${HEALTHCHECK_PORT}" >&2
+        errors=$((errors + 1))
+    fi
+fi
+
+if [ -n "${LOG_FILE:-}" ]; then
+    log_dir="$(dirname "$LOG_FILE")"
+    if [ -n "$log_dir" ] && [ "$log_dir" != "." ] && [ ! -d "$log_dir" ]; then
+        mkdir -p "$log_dir" 2>/dev/null || true
+    fi
+    if ! touch "$LOG_FILE" 2>/dev/null; then
+        echo "❌ LOG_FILE 不可写: ${LOG_FILE}" >&2
+        errors=$((errors + 1))
+    fi
 fi
 
 if stat --version >/dev/null 2>&1; then
