@@ -57,3 +57,19 @@ def test_json_response():
     response = health_server._json_response(200, {"status": "ok"})
     assert response.startswith(b"HTTP/1.1 200 OK")
     assert b"Content-Length" in response
+
+
+@pytest.mark.asyncio
+async def test_drain_headers_timeout(monkeypatch):
+    class DummyReader:
+        async def readline(self):
+            return b"\r\n"
+
+    async def fake_wait_for(awaitable, timeout):
+        del timeout
+        awaitable.close()
+        raise TimeoutError
+
+    monkeypatch.setattr(health_server.asyncio, "wait_for", fake_wait_for)
+    with pytest.raises(TimeoutError):
+        await health_server._drain_headers(DummyReader())

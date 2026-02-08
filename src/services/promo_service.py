@@ -57,83 +57,135 @@ async def send_promo_to_all(
         await record_promo_run(total, 0, total, cancelled=True, empty_run=False)
         return 0, total
 
-    # Build once and broadcast to all channels to avoid repeated DB scans.
-    messages = await _build_promo_messages_from_db()
-    limiter = SendLimiter(config.promo_send_interval)
-    worker_count = max(1, config.promo_concurrency)
-    # Bounded queue keeps memory stable when channel count is large.
-    queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue(
-        maxsize=worker_count * 4
-    )
-
     sent_count = 0
     failed_count = 0
     count_lock = asyncio.Lock()
+    metrics_recorded = False
+    producer: asyncio.Task[None] | None = None
+    workers: list[asyncio.Task[None]] = []
 
-    async def _send_to_channel(ch: dict[str, Any]) -> bool:
-        try:
-            chat_id = int(ch["chat_id"])
-        except (TypeError, ValueError):
-            logger.warning("Invalid chat_id in channel record: %s", ch.get("chat_id"))
-            return False
+    try:
+        # Build once and broadcast to all channels to avoid repeated DB scans.
+        messages = await _build_promo_messages_from_db()
+        limiter = SendLimiter(config.promo_send_interval)
+        worker_count = max(1, config.promo_concurrency)
+        # Bounded queue keeps memory stable when channel count is large.
+        queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue(
+            maxsize=worker_count * 4
+        )
 
-        try:
-            for text in messages:
-                success = await _send_with_retry(bot, chat_id, text, limiter=limiter)
-                if not success:
-                    return False
-            return True
-        except Exception as exc:
-            logger.error("Send failed for %s: %s", chat_id, exc)
-            return False
+        async def _send_to_channel(ch: dict[str, Any]) -> bool:
+            try:
+                chat_id = int(ch["chat_id"])
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Invalid chat_id in channel record: %s", ch.get("chat_id")
+                )
+                return False
 
-    async def _producer() -> None:
-        async for ch in ChannelService.iter_approved_channels(config.promo_batch_size):
-            if cancel_event and cancel_event.is_set():
-                break
-            await queue.put(ch)
-        for _ in range(worker_count):
-            await queue.put(None)
+            try:
+                for text in messages:
+                    success = await _send_with_retry(bot, chat_id, text, limiter=limiter)
+                    if not success:
+                        return False
+                return True
+            except Exception as exc:
+                logger.error("Send failed for %s: %s", chat_id, exc)
+                return False
 
-    async def _worker() -> None:
-        nonlocal sent_count, failed_count
-        while True:
-            ch = await queue.get()
-            if ch is None:
-                queue.task_done()
-                return
-            if cancel_event and cancel_event.is_set():
+        async def _producer() -> None:
+            try:
+                async for ch in ChannelService.iter_approved_channels(
+                    config.promo_batch_size
+                ):
+                    if cancel_event and cancel_event.is_set():
+                        break
+                    await queue.put(ch)
+            finally:
+                for _ in range(worker_count):
+                    await queue.put(None)
+
+        async def _worker() -> None:
+            nonlocal sent_count, failed_count
+            while True:
+                ch = await queue.get()
+                if ch is None:
+                    queue.task_done()
+                    return
+                if cancel_event and cancel_event.is_set():
+                    async with count_lock:
+                        failed_count += 1
+                    queue.task_done()
+                    continue
+                ok = await _send_to_channel(ch)
                 async with count_lock:
-                    failed_count += 1
+                    if ok:
+                        sent_count += 1
+                    else:
+                        failed_count += 1
                 queue.task_done()
-                continue
-            ok = await _send_to_channel(ch)
-            async with count_lock:
-                if ok:
-                    sent_count += 1
-                else:
-                    failed_count += 1
-            queue.task_done()
 
-    producer = asyncio.create_task(_producer())
-    workers = [asyncio.create_task(_worker()) for _ in range(worker_count)]
-    await producer
-    await queue.join()
-    await asyncio.gather(*workers, return_exceptions=True)
+        producer = asyncio.create_task(_producer())
+        workers = [asyncio.create_task(_worker()) for _ in range(worker_count)]
 
-    if cancel_event and cancel_event.is_set():
-        failed_count = total - sent_count
-        logger.warning("Promo broadcast stopped early due to cancellation")
+        producer_error: Exception | None = None
+        try:
+            await producer
+        except Exception as exc:
+            producer_error = exc
+            logger.exception("Promo producer failed")
 
-    logger.info(f"Promo broadcast: {sent_count} sent, {failed_count} failed")
-    await record_promo_run(
-        total,
-        sent_count,
-        failed_count,
-        cancelled=bool(cancel_event and cancel_event.is_set()),
-        empty_run=False,
-    )
-    return sent_count, failed_count
+        await queue.join()
+        worker_results = await asyncio.gather(*workers, return_exceptions=True)
+        for result in worker_results:
+            if isinstance(result, Exception):
+                logger.error("Promo worker failed: %s", result)
+                if producer_error is None:
+                    producer_error = result
+
+        cancelled = bool(cancel_event and cancel_event.is_set())
+        if cancelled:
+            failed_count = total - sent_count
+            logger.warning("Promo broadcast stopped early due to cancellation")
+
+        if producer_error is not None:
+            failed_count = max(failed_count, total - sent_count)
+
+        logger.info(f"Promo broadcast: {sent_count} sent, {failed_count} failed")
+        await record_promo_run(
+            total,
+            sent_count,
+            failed_count,
+            cancelled=cancelled,
+            empty_run=False,
+        )
+        metrics_recorded = True
+
+        if producer_error is not None:
+            raise producer_error
+        return sent_count, failed_count
+    except Exception:
+        if not metrics_recorded:
+            try:
+                await record_promo_run(
+                    total,
+                    sent_count,
+                    max(failed_count, total - sent_count),
+                    cancelled=bool(cancel_event and cancel_event.is_set()),
+                    empty_run=False,
+                )
+            except Exception as metric_exc:
+                logger.warning("Failed to record promo metrics after error: %s", metric_exc)
+        raise
+    finally:
+        if producer is not None and not producer.done():
+            producer.cancel()
+            await asyncio.gather(producer, return_exceptions=True)
+        if workers:
+            for worker in workers:
+                if not worker.done():
+                    worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
 
 
 def _build_promo_lines(channels: list[dict[str, Any]]) -> list[str]:

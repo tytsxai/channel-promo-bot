@@ -32,6 +32,7 @@ _REASONS = {
 }
 _MAX_REQUEST_LINE = 4096
 _MAX_HEADER_BYTES = 8192
+_READ_TIMEOUT_SECONDS = 5
 
 
 def _json_response(status_code: int, payload: dict) -> bytes:
@@ -69,7 +70,7 @@ async def _handle_path(path: str) -> tuple[int, dict]:
 async def _drain_headers(reader: asyncio.StreamReader) -> bool:
     total = 0
     while True:
-        line = await reader.readline()
+        line = await asyncio.wait_for(reader.readline(), timeout=_READ_TIMEOUT_SECONDS)
         if not line or line in (b"\n", b"\r\n"):
             return True
         total += len(line)

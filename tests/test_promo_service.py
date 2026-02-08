@@ -296,3 +296,70 @@ async def test_send_promo_to_all_invalid_chat_id(monkeypatch):
     sent, failed = await promo_service.send_promo_to_all(bot=DummyBot([]))
     assert sent == 0
     assert failed == 1
+
+
+@pytest.mark.asyncio
+async def test_send_promo_to_all_message_build_failure_records_metrics(monkeypatch):
+    async def fake_get_count():
+        return 3
+
+    async def fake_build():
+        raise RuntimeError("build failed")
+
+    metrics_calls = []
+
+    async def fake_record(total, sent, failed, *, cancelled, empty_run):
+        metrics_calls.append((total, sent, failed, cancelled, empty_run))
+
+    monkeypatch.setattr(
+        promo_service.ChannelService, "get_approved_count", fake_get_count
+    )
+    monkeypatch.setattr(promo_service, "_build_promo_messages_from_db", fake_build)
+    monkeypatch.setattr(promo_service, "record_promo_run", fake_record)
+
+    with pytest.raises(RuntimeError):
+        await promo_service.send_promo_to_all(bot=DummyBot([]))
+
+    assert metrics_calls == [(3, 0, 3, False, False)]
+
+
+@pytest.mark.asyncio
+async def test_send_promo_to_all_producer_failure_records_metrics(monkeypatch):
+    async def no_sleep(_):
+        return None
+
+    async def fake_get_count():
+        return 3
+
+    async def fake_iter(batch_size=500):
+        del batch_size
+        yield {"chat_id": "1", "title": "A", "username": "a", "category": "其他"}
+        raise RuntimeError("producer failed")
+
+    async def fake_build():
+        return ["msg"]
+
+    async def fake_send(bot, chat_id: int, text: str, limiter=None):
+        del bot, chat_id, text, limiter
+        return True
+
+    metrics_calls = []
+
+    async def fake_record(total, sent, failed, *, cancelled, empty_run):
+        metrics_calls.append((total, sent, failed, cancelled, empty_run))
+
+    monkeypatch.setattr(
+        promo_service.ChannelService, "get_approved_count", fake_get_count
+    )
+    monkeypatch.setattr(
+        promo_service.ChannelService, "iter_approved_channels", fake_iter
+    )
+    monkeypatch.setattr(promo_service, "_build_promo_messages_from_db", fake_build)
+    monkeypatch.setattr(promo_service, "_send_with_retry", fake_send)
+    monkeypatch.setattr(promo_service, "record_promo_run", fake_record)
+    monkeypatch.setattr(promo_service.asyncio, "sleep", no_sleep)
+
+    with pytest.raises(RuntimeError):
+        await promo_service.send_promo_to_all(bot=DummyBot([]))
+
+    assert metrics_calls == [(3, 1, 2, False, False)]
