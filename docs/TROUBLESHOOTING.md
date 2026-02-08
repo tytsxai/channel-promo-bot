@@ -64,3 +64,38 @@
 处理步骤：
 - 确认端口已开放并正确配置
 - 访问 `/health` 和 `/ready` 端点排查具体问题
+
+## 6. 告警未发送
+
+可能原因：
+- `ALERT_ON_CRITICAL=false`
+- `scripts/alert_admin.sh` 无执行权限
+- `.env` 中 `BOT_TOKEN` / `ADMIN_IDS` 缺失
+
+处理步骤：
+- 确认 `.env` 配置 `ALERT_ON_CRITICAL=true`
+- 执行 `chmod +x scripts/alert_admin.sh`
+- 手动测试：`./scripts/alert_admin.sh "告警链路测试"`
+- 或执行完整校验：`./scripts/verify_alerting.sh`
+
+## 7. /metrics 无数据
+
+可能原因：
+- 服务刚启动，尚未产生业务事件
+- 数据库不可写导致指标入库失败
+
+处理步骤：
+- 执行一次业务流程（提交频道、触发定时推送）后再查看
+- 检查日志是否有 `Failed to record promo metrics` 或 `Failed to increment metric`
+
+## 8. 异机备份同步失败
+
+可能原因：
+- `.env` 未配置 `BACKUP_REMOTE_HOST` / `BACKUP_REMOTE_DIR`
+- SSH 连通性或权限问题
+- 目标目录不可写
+
+处理步骤：
+- 检查 `BACKUP_REMOTE_*` 配置是否齐全
+- 测试 SSH 连接与目录权限
+- 手动执行：`./scripts/sync_backup_remote.sh`

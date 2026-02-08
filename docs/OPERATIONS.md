@@ -28,7 +28,10 @@
 - [ ] 确认仅运行单实例（SQLite 不适合多实例并发写）
 - [ ] 单实例锁已启用（`INSTANCE_LOCK_ENABLED=true`）
 - [ ] 已设置健康检查端口（`HEALTHCHECK_PORT` 非 0）
+- [ ] 已启用错误日志告警（`ALERT_ON_CRITICAL=true`）
+- [ ] 已验证告警链路（`./scripts/verify_alerting.sh`）
 - [ ] 已配置自动备份与告警（cron 或 systemd）
+- [ ] 已配置异机备份同步（建议）
 
 ### 验证命令
 
@@ -42,6 +45,12 @@ ls -la backups/
 
 # 检查健康检查脚本
 ./scripts/healthcheck.sh
+
+# 生产预检（配置/测试/lint/备份链路）
+./scripts/preflight.sh
+
+# 告警链路验证
+./scripts/verify_alerting.sh
 ```
 
 ---
@@ -123,6 +132,9 @@ crontab -e
 
 # 添加每日凌晨 2:00 备份任务
 0 2 * * * /path/to/频道互推机器人-channel-promo-bot/scripts/backup_db.sh >> /var/log/bot_backup.log 2>&1
+
+# 可选：每日 2:10 同步到异机
+10 2 * * * /path/to/频道互推机器人-channel-promo-bot/scripts/sync_backup_remote.sh >> /var/log/bot_backup_sync.log 2>&1
 ```
 
 ### 恢复数据
@@ -135,7 +147,9 @@ ls -la backups/
 ./scripts/restore_db.sh backups/bot_backup_YYYYMMDD_HHMMSS.db
 ```
 
-> 恢复前务必先停止机器人进程，否则可能导致数据不一致或恢复失败。
+> 恢复脚本会自动检测实例锁，若机器人仍在运行会拒绝执行。
+
+> 恢复前会自动校验备份完整性，并在恢复时清理旧 `-wal/-shm` 文件，降低 SQLite WAL 污染风险。
 
 > 备份与恢复会读取 `.env` 中的 `DATABASE_PATH`，请确保配置正确。
 
@@ -202,6 +216,7 @@ grep -i error logs/bot.log
 # 启用健康检查端口后（HEALTHCHECK_PORT>0）
 curl http://127.0.0.1:8080/health
 curl http://127.0.0.1:8080/ready
+curl http://127.0.0.1:8080/metrics
 ```
 
 ### 日志关键字监控

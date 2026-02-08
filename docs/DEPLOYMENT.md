@@ -13,6 +13,7 @@
 - 生产环境建议使用密钥管理服务注入环境变量，不要提交 `.env`
 - 当前使用 SQLite，仅建议单实例运行；如需多实例请评估迁移至集中式数据库
  - 生产环境将强制开启单实例锁（`INSTANCE_LOCK_ENABLED=true`）
+- 建议启用错误自动告警（`ALERT_ON_CRITICAL=true`），并配置 `ALERT_COOLDOWN_SECONDS`
 
 ## 2. 安装依赖
 
@@ -61,6 +62,18 @@ sudo systemctl start telegram-bot
 sudo systemctl status telegram-bot
 ```
 
+### 推荐：使用仓库内模板一键安装
+
+```bash
+./scripts/install_systemd_units.sh \
+  --service-name channel-promo-bot \
+  --run-user "$USER" \
+  --app-dir "$PWD" \
+  --install
+```
+
+模板目录：`deploy/systemd/`
+
 ## 5. 健康检查与监控
 
 启用 `HEALTHCHECK_PORT` 后：
@@ -68,6 +81,7 @@ sudo systemctl status telegram-bot
 ```bash
 curl http://127.0.0.1:8080/health
 curl http://127.0.0.1:8080/ready
+curl http://127.0.0.1:8080/metrics
 ```
 
 也可以直接运行脚本（会读取 `.env`）：
@@ -76,11 +90,25 @@ curl http://127.0.0.1:8080/ready
 ./scripts/healthcheck.sh
 ```
 
+上线前建议运行预检：
+
+```bash
+./scripts/preflight.sh
+```
+
 ## 6. 日志与备份
 
 - 推荐设置 `LOG_FILE=logs/bot.log` 进行日志落盘
 - 使用 `scripts/backup_db.sh` 定期备份数据库
+- 恢复时使用 `scripts/restore_db.sh`（已包含备份文件完整性校验与运行中保护）
 - 可使用 `scripts/check_backup_freshness.sh` 检查备份是否按期产出
+- 可使用 `scripts/sync_backup_remote.sh` 同步到异机（建议生产启用）
+
+建议上线后立即执行：
+
+```bash
+./scripts/verify_alerting.sh
+```
 
 ## 7. 回滚策略
 

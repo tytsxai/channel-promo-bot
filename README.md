@@ -104,6 +104,17 @@ HEALTHCHECK_HOST=127.0.0.1
 HEALTHCHECK_PORT=8080
 # HEALTHCHECK_TIMEOUT=2
 
+# 错误日志自动告警（调用 scripts/alert_admin.sh）
+ALERT_ON_CRITICAL=true
+# 告警冷却时间（秒）
+ALERT_COOLDOWN_SECONDS=300
+
+# 可选：异机备份同步
+# BACKUP_REMOTE_USER=backup
+# BACKUP_REMOTE_HOST=192.168.1.10
+# BACKUP_REMOTE_PORT=22
+# BACKUP_REMOTE_DIR=/data/channel-promo-bot-backups
+
 # 运行环境
 ENVIRONMENT=production
 ```
@@ -221,11 +232,50 @@ python -m ruff check .
 
 - `GET /health`：进程存活检查
 - `GET /ready`：包含数据库连接检查
+- `GET /metrics`：关键计数指标（推送/提交）
 
 你可以使用脚本快速检测：
 
 ```bash
 ./scripts/healthcheck.sh
+```
+
+检查指标端点：
+
+```bash
+HEALTHCHECK_ENDPOINT=metrics ./scripts/healthcheck.sh
+```
+
+## 上线前预检
+
+发布前建议执行预检脚本（会检查关键配置、测试、lint、备份链路）：
+
+```bash
+./scripts/preflight.sh
+```
+
+## 推荐生产部署（systemd）
+
+已提供模板与安装脚本：
+
+```bash
+./scripts/install_systemd_units.sh \
+  --service-name channel-promo-bot \
+  --run-user "$USER" \
+  --app-dir "$PWD" \
+  --install
+```
+
+模板说明见：`deploy/systemd/README.md`
+
+## 告警与异机备份自检
+
+```bash
+# 发送一条测试告警给管理员
+./scripts/verify_alerting.sh
+
+# 执行异机备份同步（需先配置 BACKUP_REMOTE_*）
+./scripts/sync_backup_remote.sh
 ```
 
 ## 运维与部署文档

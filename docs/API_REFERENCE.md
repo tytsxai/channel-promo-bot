@@ -82,6 +82,12 @@ class Config:
 | `LOG_BACKUP_COUNT` | 否 | `5` | 日志备份数量 |
 | `HEALTHCHECK_HOST` | 否 | `127.0.0.1` | 健康检查地址 |
 | `HEALTHCHECK_PORT` | 否 | `0` | 健康检查端口(0禁用) |
+| `ALERT_ON_CRITICAL` | 否 | `true` | ERROR/CRITICAL 日志触发告警 |
+| `ALERT_COOLDOWN_SECONDS` | 否 | `300` | 告警冷却时间（秒） |
+| `BACKUP_REMOTE_USER` | 否 | - | 异机备份 SSH 用户 |
+| `BACKUP_REMOTE_HOST` | 否 | - | 异机备份目标主机 |
+| `BACKUP_REMOTE_PORT` | 否 | `22` | 异机备份 SSH 端口 |
+| `BACKUP_REMOTE_DIR` | 否 | - | 异机备份目标目录 |
 | `ENVIRONMENT` | 否 | `production` | 运行环境 |
 
 ---
@@ -365,3 +371,4 @@ async def start_health_server(host: str, port: int) -> asyncio.AbstractServer
 
 - `GET /health` - 进程存活检查
 - `GET /ready` - 包含数据库连接检查
+- `GET /metrics` - 关键计数指标快照（推送/提交）
