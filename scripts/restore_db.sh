@@ -104,6 +104,36 @@ PY
     fi
 }
 
+snapshot_database() {
+    local src_db="$1"
+    local dst_db="$2"
+
+    if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$src_db" ".backup '$dst_db'"
+        return
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "错误: 未找到 sqlite3 或 python3，无法创建恢复前快照" >&2
+        exit 1
+    fi
+
+    python3 - "$src_db" "$dst_db" <<'PY'
+import sqlite3
+import sys
+
+src_path, dst_path = sys.argv[1:3]
+src = sqlite3.connect(src_path)
+dst = sqlite3.connect(dst_path)
+try:
+    src.backup(dst)
+    dst.commit()
+finally:
+    dst.close()
+    src.close()
+PY
+}
+
 # 检查参数
 if [ -z "$1" ]; then
     echo "用法: $0 <备份文件路径>"
@@ -132,12 +162,14 @@ assert_not_running
 
 mkdir -p "${PROJECT_DIR}/backups"
 
-# 恢复前先备份当前数据库
+# 恢复前先备份当前数据库（使用 SQLite 在线快照，确保 WAL 一致性）
 if [ -f "$DB_PATH" ]; then
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     PRE_RESTORE="${PROJECT_DIR}/backups/pre_restore_${TIMESTAMP}.db"
     echo "备份当前数据库到: $PRE_RESTORE"
-    cp "$DB_PATH" "$PRE_RESTORE"
+    snapshot_database "$DB_PATH" "$PRE_RESTORE"
+    echo "校验恢复前快照完整性..."
+    run_integrity_check "$PRE_RESTORE"
 fi
 
 # 执行恢复

@@ -45,7 +45,7 @@ conn = http.client.HTTPConnection(host, port, timeout=timeout)
 try:
     conn.request("GET", path)
     resp = conn.getresponse()
-    if resp.status >= 500:
+    if resp.status < 200 or resp.status >= 300:
         raise SystemExit(1)
 finally:
     conn.close()

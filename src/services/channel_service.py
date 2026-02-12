@@ -153,6 +153,32 @@ class ChannelService:
             offset += batch_size
 
     @staticmethod
+    async def iter_approved_channel_targets(
+        batch_size: int = 500,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream approved channel targets with keyset pagination.
+
+        这里按自增 id 递增读取，避免在广播过程中频道状态发生变化时
+        OFFSET 分页出现“漏读/跳读”问题。
+        """
+        last_id = 0
+        while True:
+            async with get_db() as db:
+                cursor = await db.execute(
+                    "SELECT id, chat_id FROM channels "
+                    "WHERE status = ? AND id > ? "
+                    "ORDER BY id LIMIT ?",
+                    ("approved", last_id, batch_size),
+                )
+                rows = await cursor.fetchall()
+            if not rows:
+                break
+            for row in rows:
+                item = dict(row)
+                last_id = int(item["id"])
+                yield item
+
+    @staticmethod
     async def mark_inactive(chat_id: int) -> bool:
         async with get_db() as db:
             cursor = await db.execute(

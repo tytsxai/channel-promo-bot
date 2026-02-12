@@ -95,7 +95,7 @@ async def send_promo_to_all(
 
         async def _producer() -> None:
             try:
-                async for ch in ChannelService.iter_approved_channels(
+                async for ch in ChannelService.iter_approved_channel_targets(
                     config.promo_batch_size
                 ):
                     if cancel_event and cancel_event.is_set():

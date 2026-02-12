@@ -42,7 +42,16 @@ else
         exit 1
     fi
     ssh -p "$SSH_PORT" "${REMOTE_USER:+${REMOTE_USER}@}${REMOTE_HOST}" "mkdir -p '${REMOTE_DIR}'"
-    scp -P "$SSH_PORT" "$BACKUP_DIR"/bot_backup_*.db "$BACKUP_DIR"/pre_restore_*.db "${TARGET}/" 2>/dev/null || true
+
+    shopt -s nullglob
+    backup_files=("$BACKUP_DIR"/bot_backup_*.db "$BACKUP_DIR"/pre_restore_*.db)
+    shopt -u nullglob
+    if [ "${#backup_files[@]}" -eq 0 ]; then
+        echo "未找到可同步的备份文件" >&2
+        exit 1
+    fi
+
+    scp -P "$SSH_PORT" "${backup_files[@]}" "${TARGET}/"
 fi
 
 echo "异机备份同步完成: ${TARGET}"

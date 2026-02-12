@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - 可选健康检查端点 `/health` 与 `/ready`
+- 新增锁服务与实例锁关键路径测试（防止上线后才暴露并发/互斥问题）
+- 测试覆盖率新增最低门槛（`cov-fail-under=70`）
 - 日志配置与滚动日志支持
 - 简易数据库迁移机制（`PRAGMA user_version`）
 - 开发依赖文件 `requirements-dev.txt` 与 ruff lint 配置
@@ -15,6 +17,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - 配置项校验与类型处理增强
+- 互推发送目标读取改为 keyset 分页，降低状态变更并发下的漏发风险
 - 速率限制配置支持通过环境变量调整
 - OpenAI 模型与 Base URL 可配置
 - 测试依赖移至开发依赖，生产依赖更精简
@@ -26,3 +29,6 @@ All notable changes to this project will be documented in this file.
 - 推送发送时对异常 chat_id 记录并跳过
 - 并发重复提交时返回重复提示，避免误报提交成功
 - 告警脚本 Python 回退路径改为安全临时文件，避免固定 `/tmp` 文件竞争
+- 数据恢复前快照改为 SQLite 在线备份，避免 WAL 模式下直接复制主库导致回滚点不完整
+- `healthcheck.sh` 的 Python 回退路径统一按 2xx 判定成功，避免将 4xx 误判为健康
+- 异机备份 scp 回退路径改为失败显式报错，避免同步失败被静默吞掉

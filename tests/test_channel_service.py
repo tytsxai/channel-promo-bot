@@ -246,3 +246,51 @@ class TestChannelServiceMethods:
         pending = await channel_service.ChannelService.get_pending_channels()
         assert len(pending) == 1
         assert pending[0]["status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_iter_approved_channel_targets_keyset(self, init_db):
+        cid1 = await channel_service.ChannelService.add_channel(
+            chat_id="-100601",
+            title="A",
+            username="a",
+            member_count=800,
+            submitted_by=1,
+        )
+        cid2 = await channel_service.ChannelService.add_channel(
+            chat_id="-100602",
+            title="B",
+            username="b",
+            member_count=810,
+            submitted_by=1,
+        )
+        cid3 = await channel_service.ChannelService.add_channel(
+            chat_id="-100603",
+            title="C",
+            username="c",
+            member_count=820,
+            submitted_by=1,
+        )
+        assert cid1 and cid2 and cid3
+
+        assert await channel_service.ChannelService.approve_channel(
+            cid1, approved_by=99, category="其他"
+        )
+        assert await channel_service.ChannelService.approve_channel(
+            cid2, approved_by=99, category="其他"
+        )
+        assert await channel_service.ChannelService.approve_channel(
+            cid3, approved_by=99, category="其他"
+        )
+
+        targets = []
+        async for item in channel_service.ChannelService.iter_approved_channel_targets(
+            batch_size=2
+        ):
+            targets.append(item)
+
+        assert [item["id"] for item in targets] == [cid1, cid2, cid3]
+        assert [item["chat_id"] for item in targets] == [
+            "-100601",
+            "-100602",
+            "-100603",
+        ]

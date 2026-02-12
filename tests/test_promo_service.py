@@ -255,7 +255,7 @@ async def test_send_promo_to_all_counts(monkeypatch):
         promo_service.ChannelService, "get_approved_count", fake_get_count
     )
     monkeypatch.setattr(
-        promo_service.ChannelService, "iter_approved_channels", fake_iter
+        promo_service.ChannelService, "iter_approved_channel_targets", fake_iter
     )
     async def fake_build():
         return messages
@@ -285,7 +285,7 @@ async def test_send_promo_to_all_invalid_chat_id(monkeypatch):
         promo_service.ChannelService, "get_approved_count", fake_get_count
     )
     monkeypatch.setattr(
-        promo_service.ChannelService, "iter_approved_channels", fake_iter
+        promo_service.ChannelService, "iter_approved_channel_targets", fake_iter
     )
     async def fake_build():
         return ["msg"]
@@ -352,7 +352,7 @@ async def test_send_promo_to_all_producer_failure_records_metrics(monkeypatch):
         promo_service.ChannelService, "get_approved_count", fake_get_count
     )
     monkeypatch.setattr(
-        promo_service.ChannelService, "iter_approved_channels", fake_iter
+        promo_service.ChannelService, "iter_approved_channel_targets", fake_iter
     )
     monkeypatch.setattr(promo_service, "_build_promo_messages_from_db", fake_build)
     monkeypatch.setattr(promo_service, "_send_with_retry", fake_send)
