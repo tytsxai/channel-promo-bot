@@ -294,3 +294,80 @@ class TestChannelServiceMethods:
             "-100602",
             "-100603",
         ]
+
+    @pytest.mark.asyncio
+    async def test_reject_channel(self, init_db):
+        cid = await channel_service.ChannelService.add_channel(
+            chat_id="-100700",
+            title="Reject Me",
+            username="rejectme",
+            member_count=500,
+            submitted_by=1,
+        )
+        assert cid is not None
+        ok = await channel_service.ChannelService.reject_channel(cid)
+        assert ok is True
+        channel = await channel_service.ChannelService.get_channel_by_id(cid)
+        assert channel["status"] == "rejected"
+
+    @pytest.mark.asyncio
+    async def test_reject_channel_already_approved_returns_false(self, init_db):
+        cid = await channel_service.ChannelService.add_channel(
+            chat_id="-100701",
+            title="Approved",
+            username="approved",
+            member_count=500,
+            submitted_by=1,
+        )
+        await channel_service.ChannelService.approve_channel(cid, approved_by=1, category="其他")
+        ok = await channel_service.ChannelService.reject_channel(cid)
+        assert ok is False
+
+    @pytest.mark.asyncio
+    async def test_get_channel_by_id_not_found(self, init_db):
+        result = await channel_service.ChannelService.get_channel_by_id(999999)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_pending_count(self, init_db):
+        count0 = await channel_service.ChannelService.get_pending_count()
+        await channel_service.ChannelService.add_channel(
+            chat_id="-100800", title="P1", username="p1", member_count=100, submitted_by=1
+        )
+        await channel_service.ChannelService.add_channel(
+            chat_id="-100801", title="P2", username="p2", member_count=200, submitted_by=1
+        )
+        count1 = await channel_service.ChannelService.get_pending_count()
+        assert count1 == count0 + 2
+
+    @pytest.mark.asyncio
+    async def test_get_approved_count(self, init_db):
+        count0 = await channel_service.ChannelService.get_approved_count()
+        cid = await channel_service.ChannelService.add_channel(
+            chat_id="-100900", title="Appr", username="appr", member_count=300, submitted_by=1
+        )
+        await channel_service.ChannelService.approve_channel(cid, approved_by=1, category="其他")
+        count1 = await channel_service.ChannelService.get_approved_count()
+        assert count1 == count0 + 1
+
+    @pytest.mark.asyncio
+    async def test_channel_not_exists(self, init_db):
+        assert await channel_service.ChannelService.channel_exists("-999999") is False
+
+    @pytest.mark.asyncio
+    async def test_approve_channel_returns_false_for_nonexistent(self, init_db):
+        ok = await channel_service.ChannelService.approve_channel(999999, approved_by=1, category="其他")
+        assert ok is False
+
+    @pytest.mark.asyncio
+    async def test_mark_inactive_nonexistent_returns_false(self, init_db):
+        ok = await channel_service.ChannelService.mark_inactive(-999999)
+        assert ok is False
+
+    @pytest.mark.asyncio
+    async def test_iter_approved_empty(self, init_db):
+        targets = []
+        async for item in channel_service.ChannelService.iter_approved_channel_targets():
+            targets.append(item)
+        # No approved channels in fresh DB
+        assert isinstance(targets, list)

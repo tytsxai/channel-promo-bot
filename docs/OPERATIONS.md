@@ -20,7 +20,7 @@
 - [ ] `BOT_TOKEN` 有效
 - [ ] `ADMIN_IDS` 已设置
 - [ ] `.env` 权限已收紧（建议 600）
-- [ ] 虚拟环境已创建并安装依赖
+- [ ] Python 解释器可用并已安装依赖（支持 `.venv` / `.venv*` / `PYTHON_BIN`）
 - [ ] 已安装 sqlite3 CLI（用于备份脚本）
 - [ ] 数据库目录 `data/` 存在
 - [ ] 备份目录 `backups/` 存在
@@ -48,6 +48,8 @@ ls -la backups/
 
 # 生产预检（配置/测试/lint/备份链路）
 ./scripts/preflight.sh
+# 或指定解释器
+PYTHON_BIN=.venv312/bin/python ./scripts/preflight.sh
 
 # 告警链路验证
 ./scripts/verify_alerting.sh
@@ -91,8 +93,8 @@ After=network.target
 [Service]
 Type=simple
 User=your_user
-WorkingDirectory=/path/to/频道互推机器人-channel-promo-bot
-ExecStart=/path/to/频道互推机器人-channel-promo-bot/run.sh
+WorkingDirectory=/path/to/频道互推机器人
+ExecStart=/path/to/频道互推机器人/run.sh
 Restart=always
 RestartSec=10
 
@@ -131,10 +133,10 @@ VERIFY_BACKUP=1 ./scripts/backup_db.sh
 crontab -e
 
 # 添加每日凌晨 2:00 备份任务
-0 2 * * * /path/to/频道互推机器人-channel-promo-bot/scripts/backup_db.sh >> /var/log/bot_backup.log 2>&1
+0 2 * * * /path/to/频道互推机器人/scripts/backup_db.sh >> /var/log/bot_backup.log 2>&1
 
 # 可选：每日 2:10 同步到异机
-10 2 * * * /path/to/频道互推机器人-channel-promo-bot/scripts/sync_backup_remote.sh >> /var/log/bot_backup_sync.log 2>&1
+10 2 * * * /path/to/频道互推机器人/scripts/sync_backup_remote.sh >> /var/log/bot_backup_sync.log 2>&1
 ```
 
 ### 恢复数据
@@ -231,8 +233,8 @@ grep -E "(ERROR|CRITICAL)" logs/bot.log
 
 ```bash
 # 每 5 分钟检查一次 /ready，失败则给管理员发告警
-*/5 * * * * /path/to/频道互推机器人-channel-promo-bot/scripts/healthcheck.sh || \
-  /path/to/频道互推机器人-channel-promo-bot/scripts/alert_admin.sh "❌ 互推机器人 /ready 失败"
+*/5 * * * * /path/to/频道互推机器人/scripts/healthcheck.sh || \
+  /path/to/频道互推机器人/scripts/alert_admin.sh "❌ 互推机器人 /ready 失败"
 ```
 
 > `alert_admin.sh` 使用 `.env` 中的 `BOT_TOKEN` 与 `ADMIN_IDS` 发送告警。
@@ -241,6 +243,6 @@ grep -E "(ERROR|CRITICAL)" logs/bot.log
 
 ```bash
 # 每天早上 9:10 检查最近备份是否在 36 小时内
-10 9 * * * BACKUP_MAX_AGE_HOURS=36 /path/to/频道互推机器人-channel-promo-bot/scripts/check_backup_freshness.sh || \
-  /path/to/频道互推机器人-channel-promo-bot/scripts/alert_admin.sh "❌ 互推机器人备份过旧或缺失"
+10 9 * * * BACKUP_MAX_AGE_HOURS=36 /path/to/频道互推机器人/scripts/check_backup_freshness.sh || \
+  /path/to/频道互推机器人/scripts/alert_admin.sh "❌ 互推机器人备份过旧或缺失"
 ```

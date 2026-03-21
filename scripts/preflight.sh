@@ -8,15 +8,48 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_DIR"
 
+detect_python() {
+    if [ -n "${PYTHON_BIN:-}" ] && [ -x "${PYTHON_BIN}" ]; then
+        echo "${PYTHON_BIN}"
+        return 0
+    fi
+
+    if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
+        echo "${VIRTUAL_ENV}/bin/python"
+        return 0
+    fi
+
+    if [ -x ".venv/bin/python" ]; then
+        echo ".venv/bin/python"
+        return 0
+    fi
+
+    for candidate in .venv*/bin/python; do
+        if [ -x "${candidate}" ]; then
+            echo "${candidate}"
+            return 0
+        fi
+    done
+
+    if command -v python3 >/dev/null 2>&1; then
+        command -v python3
+        return 0
+    fi
+
+    return 1
+}
+
 if [ ! -f ".env" ]; then
     echo "❌ 缺少 .env，请先复制 .env.example 并完成配置" >&2
     exit 1
 fi
 
-if [ ! -d ".venv" ]; then
-    echo "❌ 缺少 .venv，请先创建虚拟环境并安装依赖" >&2
+PYTHON_BIN="$(detect_python || true)"
+if [ -z "${PYTHON_BIN}" ]; then
+    echo "❌ 未找到可用 Python 解释器（可设置 PYTHON_BIN）" >&2
     exit 1
 fi
+echo "▶ 使用 Python: ${PYTHON_BIN} ($("${PYTHON_BIN}" -V 2>&1))"
 
 set -a
 # shellcheck disable=SC1091
@@ -33,6 +66,15 @@ check_required() {
     local value="${!name:-}"
     if [ -z "$value" ]; then
         echo "❌ 必填配置缺失: $name" >&2
+        errors=$((errors + 1))
+    fi
+}
+
+check_executable() {
+    local path="$1"
+    local reason="$2"
+    if [ ! -x "$path" ]; then
+        echo "❌ 脚本不可执行: ${path} (${reason})" >&2
         errors=$((errors + 1))
     fi
 }
@@ -69,6 +111,16 @@ is_true_value() {
 
 check_required BOT_TOKEN
 check_required ADMIN_IDS
+
+if ! "${PYTHON_BIN}" - <<'PY'
+import sys
+if sys.version_info < (3, 11):
+    raise SystemExit(1)
+PY
+then
+    echo "❌ Python 版本过低: $("${PYTHON_BIN}" -V 2>&1)（需要 >= 3.11）" >&2
+    errors=$((errors + 1))
+fi
 
 if [ -n "${ADMIN_IDS:-}" ] && ! printf '%s' "$ADMIN_IDS" | grep -Eq '^[0-9]+([[:space:]]*,[[:space:]]*[0-9]+)*$'; then
     echo "❌ ADMIN_IDS 格式错误，应为逗号分隔的数字列表" >&2
@@ -160,6 +212,14 @@ if [ -n "${LOG_FILE:-}" ]; then
     fi
 fi
 
+check_executable "./scripts/backup_db.sh" "数据库备份"
+check_executable "./scripts/restore_db.sh" "数据库恢复"
+check_executable "./scripts/healthcheck.sh" "健康检查"
+
+if is_true_value "${ALERT_ON_CRITICAL:-true}"; then
+    check_executable "./scripts/alert_admin.sh" "错误日志告警"
+fi
+
 if stat --version >/dev/null 2>&1; then
     env_perm=$(stat -c %a .env)
 else
@@ -173,14 +233,14 @@ if [ "$SKIP_TESTS" = "1" ]; then
     echo "▶ 跳过单测（PREFLIGHT_SKIP_TESTS=1）"
 else
     echo "▶ 运行单测与覆盖率..."
-    ./.venv/bin/python -m pytest tests/ -q
+    "${PYTHON_BIN}" -m pytest tests/ -q
 fi
 
 if [ "$SKIP_LINT" = "1" ]; then
     echo "▶ 跳过静态检查（PREFLIGHT_SKIP_LINT=1）"
 else
     echo "▶ 运行静态检查..."
-    ./.venv/bin/python -m ruff check .
+    "${PYTHON_BIN}" -m ruff check .
 fi
 
 if [ "$SKIP_BACKUP" = "1" ]; then

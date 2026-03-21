@@ -24,7 +24,7 @@
 ```bash
 # 1. 克隆项目
 git clone <repository-url>
-cd 频道互推机器人-channel-promo-bot
+cd 频道互推机器人
 
 # 2. 创建虚拟环境
 python3 -m venv .venv
@@ -133,6 +133,8 @@ ENVIRONMENT=production
 source .venv/bin/activate
 python main.py
 ```
+
+`run.sh` 会按顺序自动查找解释器：`PYTHON_BIN` → 当前激活虚拟环境 → `.venv` → `.venv*` → `python3`。
 
 ## 机器人头像（可选）
 
@@ -262,6 +264,12 @@ HEALTHCHECK_ENDPOINT=metrics ./scripts/healthcheck.sh
 
 ```bash
 PREFLIGHT_SKIP_TESTS=1 PREFLIGHT_SKIP_LINT=1 ./scripts/preflight.sh
+```
+
+如需指定解释器（例如非标准虚拟环境目录）：
+
+```bash
+PYTHON_BIN=.venv312/bin/python ./scripts/preflight.sh
 ```
 
 ## 推荐生产部署（systemd）

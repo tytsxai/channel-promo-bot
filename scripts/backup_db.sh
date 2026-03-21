@@ -3,6 +3,7 @@
 # 用法: ./scripts/backup_db.sh
 
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -76,6 +77,7 @@ PY
 fi
 
 if [ -f "$BACKUP_FILE" ]; then
+    chmod 600 "$BACKUP_FILE" 2>/dev/null || true
     echo "备份成功: $BACKUP_FILE"
     echo "文件大小: $(du -h "$BACKUP_FILE" | cut -f1)"
 else

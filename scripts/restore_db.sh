@@ -3,6 +3,7 @@
 # 用法: ./scripts/restore_db.sh <备份文件路径>
 
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -168,6 +169,7 @@ if [ -f "$DB_PATH" ]; then
     PRE_RESTORE="${PROJECT_DIR}/backups/pre_restore_${TIMESTAMP}.db"
     echo "备份当前数据库到: $PRE_RESTORE"
     snapshot_database "$DB_PATH" "$PRE_RESTORE"
+    chmod 600 "$PRE_RESTORE" 2>/dev/null || true
     echo "校验恢复前快照完整性..."
     run_integrity_check "$PRE_RESTORE"
 fi
@@ -188,6 +190,7 @@ run_integrity_check "$TMP_RESTORE"
 rm -f "${DB_PATH}-wal" "${DB_PATH}-shm"
 mv "$TMP_RESTORE" "$DB_PATH"
 rm -f "${DB_PATH}-wal" "${DB_PATH}-shm"
+chmod 600 "$DB_PATH" 2>/dev/null || true
 trap - EXIT
 
 echo "恢复完成: $DB_PATH"

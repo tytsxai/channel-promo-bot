@@ -16,6 +16,14 @@ fi
 
 BACKUP_DIR="${BACKUP_DIR:-${PROJECT_DIR}/backups}"
 MAX_AGE_HOURS="${BACKUP_MAX_AGE_HOURS:-36}"
+if [[ "$BACKUP_DIR" != /* ]]; then
+    BACKUP_DIR="${PROJECT_DIR}/${BACKUP_DIR}"
+fi
+
+if ! [[ "$MAX_AGE_HOURS" =~ ^[0-9]+$ ]]; then
+    echo "BACKUP_MAX_AGE_HOURS 必须是非负整数: $MAX_AGE_HOURS" >&2
+    exit 1
+fi
 
 if [ ! -d "$BACKUP_DIR" ]; then
     echo "备份目录不存在: $BACKUP_DIR" >&2

@@ -363,3 +363,133 @@ async def test_send_promo_to_all_producer_failure_records_metrics(monkeypatch):
         await promo_service.send_promo_to_all(bot=DummyBot([]))
 
     assert metrics_calls == [(3, 1, 2, False, False)]
+
+
+# ---------------------------------------------------------------------------
+# _send_with_retry 各异常分支
+# ---------------------------------------------------------------------------
+
+# Re-use the DummyBot defined above (calls / side_effects interface).
+
+async def _coro_none(*a, **kw):
+    return None
+
+
+@pytest.mark.asyncio
+async def test_send_with_retry_retry_after(monkeypatch):
+    slept = []
+    async def fake_sleep(s):
+        slept.append(s)
+    monkeypatch.setattr(promo_service.asyncio, "sleep", fake_sleep)
+
+    from aiogram.exceptions import TelegramRetryAfter
+    exc = TelegramRetryAfter.__new__(TelegramRetryAfter)
+    exc.retry_after = 2
+    # first call raises RetryAfter, second succeeds
+    bot = DummyBot([exc])
+    result = await promo_service._send_with_retry(bot, chat_id="@chan", text="hello", max_retries=3)
+    assert result is True
+    assert 2 in slept
+
+
+@pytest.mark.asyncio
+async def test_send_with_retry_forbidden(monkeypatch):
+    monkeypatch.setattr(promo_service.asyncio, "sleep", _coro_none)
+    mark_calls = []
+    async def fake_mark(chat_id):
+        mark_calls.append(chat_id)
+    monkeypatch.setattr(promo_service.ChannelService, "mark_inactive", fake_mark)
+
+    from aiogram.exceptions import TelegramForbiddenError
+    exc = TelegramForbiddenError.__new__(TelegramForbiddenError)
+    bot = DummyBot([exc])
+    result = await promo_service._send_with_retry(bot, chat_id="@chan", text="hello", max_retries=3)
+    assert result is False
+    assert "@chan" in mark_calls
+
+
+@pytest.mark.asyncio
+async def test_send_with_retry_not_found(monkeypatch):
+    monkeypatch.setattr(promo_service.asyncio, "sleep", _coro_none)
+    mark_calls = []
+    async def fake_mark(chat_id):
+        mark_calls.append(chat_id)
+    monkeypatch.setattr(promo_service.ChannelService, "mark_inactive", fake_mark)
+
+    from aiogram.exceptions import TelegramNotFound
+    exc = TelegramNotFound.__new__(TelegramNotFound)
+    bot = DummyBot([exc])
+    result = await promo_service._send_with_retry(bot, chat_id="@chan", text="hello", max_retries=3)
+    assert result is False
+    assert "@chan" in mark_calls
+
+
+@pytest.mark.asyncio
+async def test_send_with_retry_bad_request(monkeypatch):
+    monkeypatch.setattr(promo_service.asyncio, "sleep", _coro_none)
+    from aiogram.exceptions import TelegramBadRequest
+    exc = TelegramBadRequest.__new__(TelegramBadRequest)
+    exc.message = "bad"
+    bot = DummyBot([exc])
+    result = await promo_service._send_with_retry(bot, chat_id="@chan", text="hello", max_retries=3)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_send_with_retry_generic_retries_then_fails(monkeypatch):
+    slept = []
+    async def fake_sleep(s):
+        slept.append(s)
+    monkeypatch.setattr(promo_service.asyncio, "sleep", fake_sleep)
+
+    bot = DummyBot([RuntimeError("net"), RuntimeError("net"), RuntimeError("net")])
+    result = await promo_service._send_with_retry(bot, chat_id="@chan", text="hello", max_retries=3)
+    assert result is False
+    assert len(slept) == 2
+
+
+@pytest.mark.asyncio
+async def test_send_limiter_wait_turn_zero_interval():
+    limiter = promo_service.SendLimiter(0)
+    # 不应阻塞
+    await limiter.wait_turn()
+    await limiter.wait_turn()
+
+
+@pytest.mark.asyncio
+async def test_send_limiter_impose_cooldown():
+    import time
+    # Use a positive min_interval so wait_turn actually respects _next_time.
+    limiter = promo_service.SendLimiter(0.05)
+    before = time.monotonic()
+    await limiter.impose_cooldown(0.05)
+    await limiter.wait_turn()
+    after = time.monotonic()
+    assert after - before >= 0.04
+
+
+@pytest.mark.asyncio
+async def test_send_promo_empty_channels(monkeypatch):
+    async def fake_count():
+        return 0
+    async def fake_record(total, sent, failed, *, cancelled, empty_run):
+        pass
+    monkeypatch.setattr(promo_service.ChannelService, "get_approved_count", fake_count)
+    monkeypatch.setattr(promo_service, "record_promo_run", fake_record)
+    sent, failed = await promo_service.send_promo_to_all(bot=object())
+    assert sent == 0 and failed == 0
+
+
+@pytest.mark.asyncio
+async def test_send_promo_cancelled_before_start(monkeypatch):
+    import asyncio
+    async def fake_count():
+        return 5
+    async def fake_record(total, sent, failed, *, cancelled, empty_run):
+        pass
+    monkeypatch.setattr(promo_service.ChannelService, "get_approved_count", fake_count)
+    monkeypatch.setattr(promo_service, "record_promo_run", fake_record)
+    ev = asyncio.Event()
+    ev.set()
+    sent, failed = await promo_service.send_promo_to_all(bot=object(), cancel_event=ev)
+    assert sent == 0 and failed == 5

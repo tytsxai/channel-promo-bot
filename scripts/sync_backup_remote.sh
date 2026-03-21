@@ -18,6 +18,14 @@ REMOTE_USER="${BACKUP_REMOTE_USER:-}"
 REMOTE_HOST="${BACKUP_REMOTE_HOST:-}"
 REMOTE_DIR="${BACKUP_REMOTE_DIR:-}"
 SSH_PORT="${BACKUP_REMOTE_PORT:-22}"
+if [[ "$BACKUP_DIR" != /* ]]; then
+    BACKUP_DIR="${PROJECT_DIR}/${BACKUP_DIR}"
+fi
+
+if ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || [ "$SSH_PORT" -lt 1 ] || [ "$SSH_PORT" -gt 65535 ]; then
+    echo "BACKUP_REMOTE_PORT 必须是 1-65535 的整数: $SSH_PORT" >&2
+    exit 1
+fi
 
 if [ -z "$REMOTE_HOST" ] || [ -z "$REMOTE_DIR" ]; then
     echo "缺少 BACKUP_REMOTE_HOST 或 BACKUP_REMOTE_DIR，跳过异机备份同步" >&2

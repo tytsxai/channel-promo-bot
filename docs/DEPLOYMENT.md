@@ -29,6 +29,8 @@ pip install -r requirements.txt
 ./run.sh
 ```
 
+`run.sh` 支持自动发现解释器：`PYTHON_BIN` → 已激活虚拟环境 → `.venv` → `.venv*` → `python3`。
+
 数据库迁移会在启动时自动执行（基于 `PRAGMA user_version`）。
 启动时会校验 `BOT_TOKEN` 与 Telegram 连接，失败将直接退出并打印日志。
 
@@ -44,9 +46,9 @@ After=network.target
 [Service]
 Type=simple
 User=your_user
-WorkingDirectory=/path/to/频道互推机器人-channel-promo-bot
-EnvironmentFile=/path/to/频道互推机器人-channel-promo-bot/.env
-ExecStart=/path/to/频道互推机器人-channel-promo-bot/run.sh
+WorkingDirectory=/path/to/频道互推机器人
+EnvironmentFile=/path/to/频道互推机器人/.env
+ExecStart=/path/to/频道互推机器人/run.sh
 Restart=always
 RestartSec=10
 
@@ -100,6 +102,12 @@ curl http://127.0.0.1:8080/metrics
 
 ```bash
 PREFLIGHT_SKIP_TESTS=1 PREFLIGHT_SKIP_LINT=1 ./scripts/preflight.sh
+```
+
+如需显式指定解释器（例如虚拟环境目录不叫 `.venv`）：
+
+```bash
+PYTHON_BIN=.venv312/bin/python ./scripts/preflight.sh
 ```
 
 ## 6. 日志与备份

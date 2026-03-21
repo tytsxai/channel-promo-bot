@@ -13,7 +13,7 @@
 ```bash
 # 1. 克隆项目
 git clone <repository-url>
-cd 频道互推机器人-channel-promo-bot
+cd 频道互推机器人
 
 # 2. 创建虚拟环境
 python3 -m venv .venv
@@ -78,6 +78,8 @@ cp .env.example .env
 source .venv/bin/activate
 python main.py
 ```
+
+`run.sh` 会自动选择解释器：`PYTHON_BIN` → 当前虚拟环境 → `.venv` → `.venv*` → `python3`。
 
 ---
 

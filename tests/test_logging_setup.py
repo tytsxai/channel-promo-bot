@@ -46,3 +46,127 @@ def test_configure_logging_adds_alert_handler(monkeypatch):
     configure_logging(cfg)
     root = logging.getLogger()
     assert any(type(h).__name__ == "CriticalAlertHandler" for h in root.handlers)
+
+
+def test_json_formatter_basic():
+    from src.logging_setup import JsonFormatter
+    import logging
+    import json
+    formatter = JsonFormatter()
+    record = logging.LogRecord(
+        name="test", level=logging.INFO, pathname="", lineno=0,
+        msg="hello world", args=(), exc_info=None
+    )
+    output = formatter.format(record)
+    parsed = json.loads(output)
+    assert parsed["level"] == "INFO"
+    assert parsed["message"] == "hello world"
+    assert "timestamp" in parsed
+    assert "logger" in parsed
+
+
+def test_json_formatter_with_exception():
+    from src.logging_setup import JsonFormatter
+    import logging
+    import json
+    import sys
+    formatter = JsonFormatter()
+    try:
+        raise ValueError("test error")
+    except ValueError:
+        exc_info = sys.exc_info()
+    record = logging.LogRecord(
+        name="test", level=logging.ERROR, pathname="", lineno=0,
+        msg="oops", args=(), exc_info=exc_info
+    )
+    output = formatter.format(record)
+    parsed = json.loads(output)
+    assert "exc_info" in parsed
+    assert "ValueError" in parsed["exc_info"]
+
+
+def test_critical_alert_handler_cooldown():
+    from src.logging_setup import CriticalAlertHandler
+    import logging
+    import time
+    called = []
+    handler = CriticalAlertHandler(script_path="/nonexistent/script.sh", cooldown_seconds=9999)
+    handler._last_sent = time.time()  # 模拟刚发送过
+    record = logging.LogRecord(
+        name="test", level=logging.ERROR, pathname="", lineno=0,
+        msg="alert", args=(), exc_info=None
+    )
+    # 冷却中，不应触发 Popen
+    import unittest.mock as mock
+    with mock.patch("subprocess.Popen") as popen_mock:
+        handler.emit(record)
+        popen_mock.assert_not_called()
+
+
+def test_critical_alert_handler_fires_after_cooldown():
+    from src.logging_setup import CriticalAlertHandler
+    import logging
+    import time
+    import unittest.mock as mock
+    handler = CriticalAlertHandler(script_path="/nonexistent/script.sh", cooldown_seconds=0)
+    handler._last_sent = 0.0
+    record = logging.LogRecord(
+        name="test", level=logging.ERROR, pathname="", lineno=0,
+        msg="alert", args=(), exc_info=None
+    )
+    with mock.patch("subprocess.Popen") as popen_mock:
+        popen_mock.return_value = None
+        handler.emit(record)
+        popen_mock.assert_called_once()
+
+
+def test_critical_alert_handler_below_level_skipped():
+    from src.logging_setup import CriticalAlertHandler
+    import logging
+    import unittest.mock as mock
+    handler = CriticalAlertHandler(script_path="/nonexistent/script.sh", cooldown_seconds=0)
+    handler._last_sent = 0.0
+    record = logging.LogRecord(
+        name="test", level=logging.DEBUG, pathname="", lineno=0,
+        msg="debug msg", args=(), exc_info=None
+    )
+    with mock.patch("subprocess.Popen") as popen_mock:
+        handler.emit(record)
+        popen_mock.assert_not_called()
+
+
+def test_configure_logging_with_file(tmp_path):
+    from dataclasses import replace
+    from src.config import config as base_config
+    from src.logging_setup import configure_logging
+    log_file = str(tmp_path / "test.log")
+    cfg = replace(
+        base_config,
+        log_format="text",
+        log_level="WARNING",
+        log_file=log_file,
+    )
+    configure_logging(cfg)
+    root = logging.getLogger()
+    from logging.handlers import RotatingFileHandler
+    assert any(isinstance(h, RotatingFileHandler) for h in root.handlers)
+
+
+def test_configure_logging_alert_script_not_executable(monkeypatch):
+    """alert_on_critical=True 但脚本不可执行时不应添加 CriticalAlertHandler。"""
+    from dataclasses import replace
+    from src.config import config as base_config
+    from src.logging_setup import configure_logging
+    monkeypatch.setattr("src.logging_setup.os.path.isfile", lambda p: True)
+    monkeypatch.setattr("src.logging_setup.os.access", lambda p, mode: False)
+    cfg = replace(
+        base_config,
+        log_format="text",
+        log_level="INFO",
+        log_file=None,
+        alert_on_critical=True,
+        alert_cooldown_seconds=60,
+    )
+    configure_logging(cfg)
+    root = logging.getLogger()
+    assert not any(type(h).__name__ == "CriticalAlertHandler" for h in root.handlers)

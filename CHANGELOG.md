@@ -23,6 +23,9 @@ All notable changes to this project will be documented in this file.
 - 测试依赖移至开发依赖，生产依赖更精简
 - 健康检查请求头读取增加超时，降低慢连接占用风险
 - 定时推送异常路径补齐：后台任务清理、失败计数与指标落库更稳健
+- `run.sh` 与 `preflight.sh` 改为自动发现 Python 解释器（支持 `.venv*` / `PYTHON_BIN`），降低发布环境路径耦合
+- systemd 主服务模板增加基础安全硬化项（`PrivateDevices`、`ProtectSystem`、`UMask` 等）
+- CI 新增 `ruff` 与 shell 脚本语法检查门禁
 
 ### Fixed
 - 输入链接解析更健壮
@@ -32,3 +35,5 @@ All notable changes to this project will be documented in this file.
 - 数据恢复前快照改为 SQLite 在线备份，避免 WAL 模式下直接复制主库导致回滚点不完整
 - `healthcheck.sh` 的 Python 回退路径统一按 2xx 判定成功，避免将 4xx 误判为健康
 - 异机备份 scp 回退路径改为失败显式报错，避免同步失败被静默吞掉
+- 备份相关脚本统一处理相对 `BACKUP_DIR`，避免在非项目目录执行时路径漂移
+- 备份与恢复产物权限收敛（`umask 077` + `chmod 600`），降低数据文件过宽权限风险
