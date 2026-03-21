@@ -94,6 +94,7 @@ After=network.target
 Type=simple
 User=your_user
 WorkingDirectory=/path/to/频道互推机器人
+EnvironmentFile=/path/to/频道互推机器人/.env
 ExecStart=/path/to/频道互推机器人/run.sh
 Restart=always
 RestartSec=10

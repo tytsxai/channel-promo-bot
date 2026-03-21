@@ -31,6 +31,7 @@ class Config:
     promo_lock_enabled: bool  # 是否启用分布式锁
     promo_lock_ttl: int    # 锁过期时间(秒)
     promo_batch_size: int  # 推送分页大小
+    promo_shutdown_timeout: int  # 关闭时等待推送任务结束的最大时间(秒)
     rate_limit: int       # 速率限制次数
     rate_limit_window: int  # 速率限制窗口(秒)
     rate_limit_cleanup: int # 速率记录清理间隔(秒)
@@ -42,6 +43,10 @@ class Config:
     log_backup_count: int # 日志备份数量
     healthcheck_host: str # 健康检查地址
     healthcheck_port: int # 健康检查端口
+    instance_lock_enabled: bool  # 单实例锁开关
+    instance_lock_path: str      # 单实例锁文件路径
+    alert_on_critical: bool      # ERROR/CRITICAL 日志触发告警
+    alert_cooldown_seconds: int  # 告警冷却时间(秒)
     environment: str      # 运行环境
 ```
 
@@ -71,6 +76,9 @@ class Config:
 | `PROMO_LOCK_ENABLED` | 否 | `true` | 是否启用分布式锁 |
 | `PROMO_LOCK_TTL` | 否 | `3600` | 锁过期时间(秒) |
 | `PROMO_BATCH_SIZE` | 否 | `500` | 推送分页大小 |
+| `PROMO_SHUTDOWN_TIMEOUT` | 否 | `30` | 关闭时等待推送任务结束的最大时间(秒)，0 不等待 |
+| `INSTANCE_LOCK_ENABLED` | 否 | `true` | 单实例锁开关（生产环境强制为 true） |
+| `INSTANCE_LOCK_PATH` | 否 | `data/bot.lock` | 单实例锁文件路径 |
 | `RATE_LIMIT` | 否 | `10` | 速率限制次数 |
 | `RATE_LIMIT_WINDOW` | 否 | `60` | 速率限制窗口 |
 | `RATE_LIMIT_CLEANUP` | 否 | `300` | 速率记录清理间隔 |
@@ -84,11 +92,13 @@ class Config:
 | `HEALTHCHECK_PORT` | 否 | `0` | 健康检查端口(0禁用) |
 | `ALERT_ON_CRITICAL` | 否 | `true` | ERROR/CRITICAL 日志触发告警 |
 | `ALERT_COOLDOWN_SECONDS` | 否 | `300` | 告警冷却时间（秒） |
+| `BACKUP_DIR` | 否 | `backups` | 备份目录 |
+| `BACKUP_RETENTION_DAYS` | 否 | `7` | 备份保留天数 |
 | `BACKUP_REMOTE_USER` | 否 | - | 异机备份 SSH 用户 |
 | `BACKUP_REMOTE_HOST` | 否 | - | 异机备份目标主机 |
 | `BACKUP_REMOTE_PORT` | 否 | `22` | 异机备份 SSH 端口 |
 | `BACKUP_REMOTE_DIR` | 否 | - | 异机备份目标目录 |
-| `ENVIRONMENT` | 否 | `production` | 运行环境 |
+| `ENVIRONMENT` | 否 | `production` | 运行环境（production 时强制校验关键配置） |
 
 ---
 

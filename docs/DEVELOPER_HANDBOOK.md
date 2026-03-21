@@ -64,7 +64,16 @@ cp .env.example .env
 | `HEALTHCHECK_HOST` | 否 | 健康检查地址 |
 | `HEALTHCHECK_PORT` | 否 | 健康检查端口(0禁用) |
 | `HEALTHCHECK_TIMEOUT` | 否 | 健康检查超时(秒)，供脚本使用 |
-| `ENVIRONMENT` | 否 | 运行环境 |
+| `ALERT_ON_CRITICAL` | 否 | ERROR/CRITICAL 日志触发告警（默认 true） |
+| `ALERT_COOLDOWN_SECONDS` | 否 | 告警冷却时间（秒），默认 300 |
+| `PROMO_SHUTDOWN_TIMEOUT` | 否 | 关闭时等待推送任务结束的最大时间(秒)，0 不等待 |
+| `BACKUP_DIR` | 否 | 备份目录，默认 backups |
+| `BACKUP_RETENTION_DAYS` | 否 | 备份保留天数，默认 7 |
+| `BACKUP_REMOTE_USER` | 否 | 异机备份 SSH 用户 |
+| `BACKUP_REMOTE_HOST` | 否 | 异机备份目标主机 |
+| `BACKUP_REMOTE_PORT` | 否 | 异机备份 SSH 端口，默认 22 |
+| `BACKUP_REMOTE_DIR` | 否 | 异机备份目标目录 |
+| `ENVIRONMENT` | 否 | 运行环境（production 时强制校验关键配置） |
 
 ---
 

@@ -36,6 +36,6 @@
 
 ```bash
 sudo systemctl status channel-promo-bot.service --no-pager
-sudo systemctl list-timers --all | rg channel-promo-bot
+sudo systemctl list-timers --all | grep channel-promo-bot
 journalctl -u channel-promo-bot.service -f
 ```

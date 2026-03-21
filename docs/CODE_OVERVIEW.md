@@ -44,9 +44,14 @@
 │   │   ├── channel_service.py
 │   │   ├── promo_service.py
 │   │   ├── ai_classifier.py
-│   │   └── health_server.py
+│   │   ├── health_server.py
+│   │   ├── lock_service.py
+│   │   ├── instance_lock.py
+│   │   ├── metrics_service.py
+│   │   ├── pending_submission_service.py
+│   │   └── db_utils.py
 │   └── models/
-│       └── database.py     # 数据库初始化
+│       └── database.py     # 数据库初始化与迁移
 ├── scripts/                # 运维脚本
 ├── tests/                  # 测试文件
 └── data/                   # 数据目录
@@ -200,6 +205,7 @@ APScheduler 触发定时任务
         │
         ▼
   处理失效频道（标记 inactive）
+```
 
 ### 运行时健康检查
 
@@ -222,6 +228,6 @@ GET /health /ready
 | 框架 | aiogram | 3.4.1 |
 | 数据库 | SQLite + aiosqlite | 0.19.0 |
 | 调度器 | APScheduler | 3.10.4 |
-| AI | OpenAI API | 1.6.1 |
-| HTTP | httpx | 0.26.0 |
+| AI | OpenAI API | >=1.6.1,<2.0.0 |
+| HTTP | httpx | >=0.26.0,<1.0.0 |
 | 环境变量 | python-dotenv | 1.0.0 |
