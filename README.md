@@ -23,8 +23,8 @@
 
 ```bash
 # 1. 克隆项目
-git clone <repository-url>
-cd 频道互推机器人
+git clone https://github.com/tytsxai/channel-promo-bot.git
+cd channel-promo-bot
 
 # 2. 创建虚拟环境
 python3 -m venv .venv
@@ -169,7 +169,10 @@ python main.py
 ├── main.py                 # 应用入口
 ├── run.sh                  # 启动脚本
 ├── requirements.txt        # 依赖列表
+├── pyproject.toml          # 项目元数据与构建配置
 ├── .env.example            # 环境变量模板
+├── CONTRIBUTING.md         # 贡献指南
+├── CODE_OF_CONDUCT.md      # 行为准则
 ├── src/
 │   ├── config.py           # 配置管理
 │   ├── middleware.py       # 速率限制中间件
