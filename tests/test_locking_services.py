@@ -124,7 +124,6 @@ async def test_lock_service_same_owner_can_reacquire(init_db):
 
 @pytest.mark.asyncio
 async def test_metrics_increment_and_snapshot(patched_db):
-    from dataclasses import replace
     import src.models.database as _db
     import src.services.metrics_service as metrics_service
 
@@ -140,7 +139,6 @@ async def test_metrics_increment_and_snapshot(patched_db):
 
 @pytest.mark.asyncio
 async def test_metrics_increment_zero_noop(patched_db):
-    from dataclasses import replace
     import src.models.database as _db
     import src.services.metrics_service as metrics_service
 

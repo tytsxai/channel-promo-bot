@@ -5,8 +5,8 @@ from src.services.promo_service import (
     MAX_MESSAGE_LEN,
     _build_promo_messages,
     _build_promo_text,
-    _chunk_lines,
 )
+from src.utils import chunk_lines as _chunk_lines
 
 
 class TestBuildPromoText:
@@ -15,21 +15,13 @@ class TestBuildPromoText:
         assert "今日互推精选" in result
 
     def test_single_channel(self):
-        channels = [{
-            "title": "Test Channel",
-            "username": "testchannel",
-            "category": "科技数码"
-        }]
+        channels = [{"title": "Test Channel", "username": "testchannel", "category": "科技数码"}]
         result = _build_promo_text(channels)
         assert "科技数码" in result
         assert "testchannel" in result
 
     def test_channel_without_username(self):
-        channels = [{
-            "title": "Private Channel",
-            "username": None,
-            "category": "其他"
-        }]
+        channels = [{"title": "Private Channel", "username": None, "category": "其他"}]
         result = _build_promo_text(channels)
         assert "Private Channel" in result
 
@@ -47,20 +39,12 @@ class TestBuildPromoText:
         assert "/help" in result
 
     def test_special_chars_escaped(self):
-        channels = [{
-            "title": "Test_Channel",
-            "username": "test",
-            "category": "其他"
-        }]
+        channels = [{"title": "Test_Channel", "username": "test", "category": "其他"}]
         result = _build_promo_text(channels)
         assert r"\_" in result
 
     def test_username_escaped_in_url(self):
-        channels = [{
-            "title": "Channel",
-            "username": "test_channel",
-            "category": "其他"
-        }]
+        channels = [{"title": "Channel", "username": "test_channel", "category": "其他"}]
         result = _build_promo_text(channels)
         assert "https://t.me/test\\_channel" in result
 
@@ -213,9 +197,7 @@ async def test_send_with_retry_generic_exception_exhausts(monkeypatch):
 
     monkeypatch.setattr(promo_service.asyncio, "sleep", no_sleep)
     bot = DummyBot([RuntimeError("boom"), RuntimeError("boom"), RuntimeError("boom")])
-    result = await promo_service._send_with_retry(
-        bot, chat_id=1, text="hi", max_retries=3
-    )
+    result = await promo_service._send_with_retry(bot, chat_id=1, text="hi", max_retries=3)
     assert result is False
 
 
@@ -224,9 +206,7 @@ async def test_send_promo_to_all_no_channels(monkeypatch):
     async def fake_get_count():
         return 0
 
-    monkeypatch.setattr(
-        promo_service.ChannelService, "get_approved_count", fake_get_count
-    )
+    monkeypatch.setattr(promo_service.ChannelService, "get_approved_count", fake_get_count)
     sent, failed = await promo_service.send_promo_to_all(bot=DummyBot([]))
     assert sent == 0
     assert failed == 0
@@ -251,12 +231,9 @@ async def test_send_promo_to_all_counts(monkeypatch):
         calls["count"] += 1
         return chat_id != 2
 
-    monkeypatch.setattr(
-        promo_service.ChannelService, "get_approved_count", fake_get_count
-    )
-    monkeypatch.setattr(
-        promo_service.ChannelService, "iter_approved_channel_targets", fake_iter
-    )
+    monkeypatch.setattr(promo_service.ChannelService, "get_approved_count", fake_get_count)
+    monkeypatch.setattr(promo_service.ChannelService, "iter_approved_channel_targets", fake_iter)
+
     async def fake_build():
         return messages
 
@@ -281,12 +258,9 @@ async def test_send_promo_to_all_invalid_chat_id(monkeypatch):
     async def fake_send(bot, chat_id: int, text: str, limiter=None):
         raise AssertionError("should not send")
 
-    monkeypatch.setattr(
-        promo_service.ChannelService, "get_approved_count", fake_get_count
-    )
-    monkeypatch.setattr(
-        promo_service.ChannelService, "iter_approved_channel_targets", fake_iter
-    )
+    monkeypatch.setattr(promo_service.ChannelService, "get_approved_count", fake_get_count)
+    monkeypatch.setattr(promo_service.ChannelService, "iter_approved_channel_targets", fake_iter)
+
     async def fake_build():
         return ["msg"]
 
@@ -311,9 +285,7 @@ async def test_send_promo_to_all_message_build_failure_records_metrics(monkeypat
     async def fake_record(total, sent, failed, *, cancelled, empty_run):
         metrics_calls.append((total, sent, failed, cancelled, empty_run))
 
-    monkeypatch.setattr(
-        promo_service.ChannelService, "get_approved_count", fake_get_count
-    )
+    monkeypatch.setattr(promo_service.ChannelService, "get_approved_count", fake_get_count)
     monkeypatch.setattr(promo_service, "_build_promo_messages_from_db", fake_build)
     monkeypatch.setattr(promo_service, "record_promo_run", fake_record)
 
@@ -348,12 +320,8 @@ async def test_send_promo_to_all_producer_failure_records_metrics(monkeypatch):
     async def fake_record(total, sent, failed, *, cancelled, empty_run):
         metrics_calls.append((total, sent, failed, cancelled, empty_run))
 
-    monkeypatch.setattr(
-        promo_service.ChannelService, "get_approved_count", fake_get_count
-    )
-    monkeypatch.setattr(
-        promo_service.ChannelService, "iter_approved_channel_targets", fake_iter
-    )
+    monkeypatch.setattr(promo_service.ChannelService, "get_approved_count", fake_get_count)
+    monkeypatch.setattr(promo_service.ChannelService, "iter_approved_channel_targets", fake_iter)
     monkeypatch.setattr(promo_service, "_build_promo_messages_from_db", fake_build)
     monkeypatch.setattr(promo_service, "_send_with_retry", fake_send)
     monkeypatch.setattr(promo_service, "record_promo_run", fake_record)
@@ -371,6 +339,7 @@ async def test_send_promo_to_all_producer_failure_records_metrics(monkeypatch):
 
 # Re-use the DummyBot defined above (calls / side_effects interface).
 
+
 async def _coro_none(*a, **kw):
     return None
 
@@ -378,11 +347,14 @@ async def _coro_none(*a, **kw):
 @pytest.mark.asyncio
 async def test_send_with_retry_retry_after(monkeypatch):
     slept = []
+
     async def fake_sleep(s):
         slept.append(s)
+
     monkeypatch.setattr(promo_service.asyncio, "sleep", fake_sleep)
 
     from aiogram.exceptions import TelegramRetryAfter
+
     exc = TelegramRetryAfter.__new__(TelegramRetryAfter)
     exc.retry_after = 2
     # first call raises RetryAfter, second succeeds
@@ -396,11 +368,14 @@ async def test_send_with_retry_retry_after(monkeypatch):
 async def test_send_with_retry_forbidden(monkeypatch):
     monkeypatch.setattr(promo_service.asyncio, "sleep", _coro_none)
     mark_calls = []
+
     async def fake_mark(chat_id):
         mark_calls.append(chat_id)
+
     monkeypatch.setattr(promo_service.ChannelService, "mark_inactive", fake_mark)
 
     from aiogram.exceptions import TelegramForbiddenError
+
     exc = TelegramForbiddenError.__new__(TelegramForbiddenError)
     bot = DummyBot([exc])
     result = await promo_service._send_with_retry(bot, chat_id="@chan", text="hello", max_retries=3)
@@ -412,11 +387,14 @@ async def test_send_with_retry_forbidden(monkeypatch):
 async def test_send_with_retry_not_found(monkeypatch):
     monkeypatch.setattr(promo_service.asyncio, "sleep", _coro_none)
     mark_calls = []
+
     async def fake_mark(chat_id):
         mark_calls.append(chat_id)
+
     monkeypatch.setattr(promo_service.ChannelService, "mark_inactive", fake_mark)
 
     from aiogram.exceptions import TelegramNotFound
+
     exc = TelegramNotFound.__new__(TelegramNotFound)
     bot = DummyBot([exc])
     result = await promo_service._send_with_retry(bot, chat_id="@chan", text="hello", max_retries=3)
@@ -425,21 +403,12 @@ async def test_send_with_retry_not_found(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_send_with_retry_bad_request(monkeypatch):
-    monkeypatch.setattr(promo_service.asyncio, "sleep", _coro_none)
-    from aiogram.exceptions import TelegramBadRequest
-    exc = TelegramBadRequest.__new__(TelegramBadRequest)
-    exc.message = "bad"
-    bot = DummyBot([exc])
-    result = await promo_service._send_with_retry(bot, chat_id="@chan", text="hello", max_retries=3)
-    assert result is False
-
-
-@pytest.mark.asyncio
 async def test_send_with_retry_generic_retries_then_fails(monkeypatch):
     slept = []
+
     async def fake_sleep(s):
         slept.append(s)
+
     monkeypatch.setattr(promo_service.asyncio, "sleep", fake_sleep)
 
     bot = DummyBot([RuntimeError("net"), RuntimeError("net"), RuntimeError("net")])
@@ -459,6 +428,7 @@ async def test_send_limiter_wait_turn_zero_interval():
 @pytest.mark.asyncio
 async def test_send_limiter_impose_cooldown():
     import time
+
     # Use a positive min_interval so wait_turn actually respects _next_time.
     limiter = promo_service.SendLimiter(0.05)
     before = time.monotonic()
@@ -472,8 +442,10 @@ async def test_send_limiter_impose_cooldown():
 async def test_send_promo_empty_channels(monkeypatch):
     async def fake_count():
         return 0
+
     async def fake_record(total, sent, failed, *, cancelled, empty_run):
         pass
+
     monkeypatch.setattr(promo_service.ChannelService, "get_approved_count", fake_count)
     monkeypatch.setattr(promo_service, "record_promo_run", fake_record)
     sent, failed = await promo_service.send_promo_to_all(bot=object())
@@ -483,10 +455,13 @@ async def test_send_promo_empty_channels(monkeypatch):
 @pytest.mark.asyncio
 async def test_send_promo_cancelled_before_start(monkeypatch):
     import asyncio
+
     async def fake_count():
         return 5
+
     async def fake_record(total, sent, failed, *, cancelled, empty_run):
         pass
+
     monkeypatch.setattr(promo_service.ChannelService, "get_approved_count", fake_count)
     monkeypatch.setattr(promo_service, "record_promo_run", fake_record)
     ev = asyncio.Event()

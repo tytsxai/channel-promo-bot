@@ -57,7 +57,7 @@ class TestChannelServiceDB:
             await db.execute(
                 "INSERT INTO channels (chat_id, title, username, member_count, submitted_by) "
                 "VALUES (?, ?, ?, ?, ?)",
-                ("-100123", "Test Channel", "testchan", 1000, 12345)
+                ("-100123", "Test Channel", "testchan", 1000, 12345),
             )
             await db.commit()
             cursor = await db.execute("SELECT * FROM channels WHERE chat_id = ?", ("-100123",))
@@ -69,11 +69,11 @@ class TestChannelServiceDB:
         async with aiosqlite.connect(temp_db) as db:
             await db.execute(
                 "INSERT INTO channels (chat_id, title, submitted_by, status) VALUES (?, ?, ?, ?)",
-                ("-100001", "Ch1", 1, "pending")
+                ("-100001", "Ch1", 1, "pending"),
             )
             await db.execute(
                 "INSERT INTO channels (chat_id, title, submitted_by, status) VALUES (?, ?, ?, ?)",
-                ("-100002", "Ch2", 1, "approved")
+                ("-100002", "Ch2", 1, "approved"),
             )
             await db.commit()
 
@@ -94,7 +94,7 @@ class TestChannelServiceDB:
                 await db.execute(
                     "INSERT INTO channels (chat_id, title, submitted_by, status) "
                     "VALUES (?, ?, ?, ?)",
-                    (f"-10000{i}", f"Channel{i}", 1, "pending")
+                    (f"-10000{i}", f"Channel{i}", 1, "pending"),
                 )
             await db.commit()
 
@@ -356,7 +356,9 @@ class TestChannelServiceMethods:
 
     @pytest.mark.asyncio
     async def test_approve_channel_returns_false_for_nonexistent(self, init_db):
-        ok = await channel_service.ChannelService.approve_channel(999999, approved_by=1, category="其他")
+        ok = await channel_service.ChannelService.approve_channel(
+            999999, approved_by=1, category="其他"
+        )
         assert ok is False
 
     @pytest.mark.asyncio
