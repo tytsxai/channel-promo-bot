@@ -44,9 +44,7 @@ class SendLimiter:
             self._next_time = max(self._next_time, now + seconds)
 
 
-async def send_promo_to_all(
-    bot: Bot, cancel_event: asyncio.Event | None = None
-) -> tuple[int, int]:
+async def send_promo_to_all(bot: Bot, cancel_event: asyncio.Event | None = None) -> tuple[int, int]:
     total = await ChannelService.get_approved_count()
     if total == 0:
         logger.info("No approved channels, skipping promo")
@@ -70,17 +68,13 @@ async def send_promo_to_all(
         limiter = SendLimiter(config.promo_send_interval)
         worker_count = max(1, config.promo_concurrency)
         # Bounded queue keeps memory stable when channel count is large.
-        queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue(
-            maxsize=worker_count * 4
-        )
+        queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue(maxsize=worker_count * 4)
 
         async def _send_to_channel(ch: dict[str, Any]) -> bool:
             try:
                 chat_id = int(ch["chat_id"])
             except (TypeError, ValueError):
-                logger.warning(
-                    "Invalid chat_id in channel record: %s", ch.get("chat_id")
-                )
+                logger.warning("Invalid chat_id in channel record: %s", ch.get("chat_id"))
                 return False
 
             try:
@@ -220,11 +214,7 @@ def _build_promo_text(channels: list[dict[str, Any]]) -> str:
 
 def _build_promo_messages(channels: list[dict[str, Any]]) -> list[str]:
     lines = _build_promo_lines(channels)
-    return _chunk_lines(lines, MAX_MESSAGE_LEN)
-
-
-def _chunk_lines(lines: list[str], limit: int) -> list[str]:
-    return chunk_lines(lines, limit)
+    return chunk_lines(lines, MAX_MESSAGE_LEN)
 
 
 async def _build_promo_messages_from_db() -> list[str]:
