@@ -11,6 +11,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # 首次运行前需复制配置: cp .env.example .env && 编辑 .env
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups

@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv*/
+venv/
+
+# 数据文件
+data/
+backups/*.db
+
+# 日志
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 测试
+.coverage
+.pytest_cache/
+htmlcov/
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~
+
+# Git
+.git/
+.gitignore
+
+# 环境配置（构建时不需要）
+.env
+
+# CI
+.github/

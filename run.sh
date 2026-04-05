@@ -4,6 +4,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# 确保脚本自身可执行
+if [ ! -x "$0" ]; then
+    echo "警告: 脚本缺少执行权限，尝试自动修复"
+    chmod +x "$0" 2>/dev/null || echo "请手动执行: chmod +x $0"
+fi
+
 detect_python() {
     if [ -n "${PYTHON_BIN:-}" ] && [ -x "${PYTHON_BIN}" ]; then
         echo "${PYTHON_BIN}"
