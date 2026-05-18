@@ -1,6 +1,12 @@
-# Telegram 互推机器人
+# Telegram 互推机器人 · Telegram Channel Cross-Promotion Bot
 
-一个用于管理 Telegram 频道互相推广的机器人，支持频道提交、管理员审核、AI 自动分类和定时群发互推文案。
+[![Release](https://img.shields.io/github/v/release/tytsxai/channel-promo-bot)](https://github.com/tytsxai/channel-promo-bot/releases) · [llms.txt](llms.txt) · [Issues](https://github.com/tytsxai/channel-promo-bot/issues) · [License: MIT](LICENSE)
+
+> **关键词**:Telegram 互推机器人 · Telegram 频道互推 bot · Telegram 频道引流 · Telegram 频道交换流量 · AI 频道分类 · Python Telegram bot 生产部署 · systemd Telegram bot · SQLite 单实例锁 · 互推文案定时群发
+>
+> **Keywords**: Telegram channel cross-promotion bot · Telegram cross-promo bot · channel exchange bot · Telegram channel growth automation · production-ready Python Telegram bot · systemd Telegram bot deployment · SQLite single-instance lock · AI channel classification
+
+一个用于管理 Telegram 频道互相推广的机器人,支持频道提交、管理员审核、AI 自动分类和定时群发互推文案。**面向生产部署**:单实例锁防 SQLite 并发写损坏、分布式锁防多实例重复推送、健康检查 + 指标端点、systemd 部署模板、备份脚本、告警 hook。
 
 ## 功能特性
 
@@ -306,6 +312,29 @@ PYTHON_BIN=.venv312/bin/python ./scripts/preflight.sh
 - `docs/OPERATIONS.md`
 - `docs/DEPLOYMENT.md`
 - `docs/TROUBLESHOOTING.md`
+
+## ❓ FAQ
+
+**Q:Bot 加进频道后还是收不到提交?**
+提交者必须是频道**创建者或管理员**;机器人必须**已加入该频道并有权限**(推荐设为管理员)。两个条件缺一即失败。
+
+**Q:AI 分类是必需的吗?**
+不是。不设置 `OPENAI_API_KEY` 时分类降级为人工标记,审核流程不受影响。
+
+**Q:如何防止多实例同时跑导致 SQLite 出问题?**
+默认 `INSTANCE_LOCK_ENABLED=true` —— bot 进程启动时拿文件锁。另外 `PROMO_LOCK_ENABLED=true` 用数据库锁防止多实例重复推送。
+
+**Q:能不能换 Postgres / MySQL?**
+当前**有意只用 SQLite**(单机 + 单实例锁 + 备份脚本)。要换库需要自己改 `src/models/database.py`。
+
+**Q:健康检查端口能关吗?**
+生产环境必须开。非生产环境可以 `HEALTHCHECK_PORT=0` 关掉。
+
+**Q:告警怎么接钉钉 / 飞书 / Slack / 企微?**
+改 `scripts/alert_admin.sh`,从 `stdin` 读告警 payload 然后 curl 到你的 webhook 即可。
+
+**Q:每个频道至少要多少人?**
+默认 700(`MIN_MEMBERS` 配)。低于这个数会自动拒绝,不进入审核队列。
 
 ## 许可证
 

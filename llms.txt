@@ -1,0 +1,58 @@
+# channel-promo-bot · Telegram 互推机器人
+
+> Open-source Telegram bot for managing **cross-promotion ("互推") between Telegram channels**: members submit their channel via link or forward, admins approve through a paginated review queue, OpenAI auto-classifies each channel into a topic, and the bot runs a daily scheduled job that broadcasts a merged cross-promotion message to every approved participant. Python 3.11+, SQLite, single-instance lock, rate limiting, health checks, systemd deploy template, off-host backup, alerting hooks.
+
+This is a **production-shaped bot**, not a toy: SQLite single-instance lock prevents concurrent write corruption, the scheduled broadcaster uses a distributed DB lock so multi-host deployments don't double-send, rate limiting can persist to SQLite, log rotation is built-in, and a `preflight.sh` checks config + tests + lint + backup paths before release.
+
+## Key docs
+
+- [README.md](README.md): Setup, config (every `.env` variable), commands, deployment, health checks, preflight.
+- [docs/OPERATIONS.md](docs/OPERATIONS.md): Day-2 ops (backup/restore/alerting/incident response).
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Systemd-based production deployment.
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): Common failure modes.
+- [deploy/systemd/README.md](deploy/systemd/README.md): Systemd unit template guide.
+- [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): Open-source governance.
+
+## What this bot does
+
+- **Channel submission**: users send a `t.me/...` link or forward a channel message — no command required
+- **Admin review queue**: `/pending` paginates pending submissions; one-tap approve / reject; submitter must be channel admin/creator; bot must be in the channel with posting rights
+- **Min-members gate**: channels below `MIN_MEMBERS` (default 700) are auto-rejected
+- **AI auto-classification**: OpenAI tags each approved channel by topic for better cross-promo matching
+- **Daily scheduled cross-promotion**: at `PROMO_HOUR_UTC:PROMO_MINUTE`, the bot generates a merged promo message and sends it to every participant; throttled via `PROMO_CONCURRENCY` + `PROMO_SEND_INTERVAL`
+- **Multi-instance safety**: SQLite single-instance lock + distributed promo lock prevent concurrent writes and double broadcasts
+- **Rate limiting**: per-user request budget in memory or SQLite
+- **Health checks**: `/health` (liveness), `/ready` (DB), `/metrics` (push/submit counters)
+- **Backups**: built-in DB backup + restore scripts; optional off-host rsync
+- **Alerting**: hooks into `scripts/alert_admin.sh` on CRITICAL log events, with cooldown
+- **Systemd deploy**: `scripts/install_systemd_units.sh` installs a tested unit template
+
+## What this bot does NOT do
+
+- ❌ Promote channels outside the participant set — only participants get broadcasts
+- ❌ Auto-approve channels — every channel passes through human review
+- ❌ Provide a Telegram client / scraper — uses the official Bot API
+- ❌ Run on Python < 3.11 (asyncio + type-hint features depend on 3.11+)
+- ❌ Use Redis or any external queue — SQLite is the only durable store by design
+- ❌ Handle DMs / private chats outside the submission flow
+
+## Common questions
+
+- **Bot 加进频道后还是收不到提交?** 提交者必须是频道创建者或管理员;机器人必须**已加入该频道并有权限**(推荐设为管理员)。两个条件缺一即失败。
+- **AI 分类是必需的吗?** 不是。不设置 `OPENAI_API_KEY` 时分类降级为人工标记,审核流程不受影响。
+- **如何防止多实例同时跑导致 SQLite 出问题?** 默认 `INSTANCE_LOCK_ENABLED=true`,bot 进程启动时拿文件锁;另外 `PROMO_LOCK_ENABLED=true` 用数据库锁防止多实例重复推送。
+- **能不能用 Postgres / MySQL?** 当前**有意只用 SQLite**(单机 + 单实例锁 + 备份脚本)。要换库需自己改 `src/models/database.py`。
+- **健康检查端口能关吗?** 生产环境必须开;非生产可以 `HEALTHCHECK_PORT=0` 关闭。
+- **告警怎么接钉钉 / 飞书 / Slack?** 改 `scripts/alert_admin.sh`,从 `stdin` 读告警 payload 然后 curl 到你的 webhook。
+
+## Repository
+
+- GitHub: https://github.com/tytsxai/channel-promo-bot
+- License: MIT
+- Stack: Python 3.11+, python-telegram-bot, SQLite, OpenAI SDK (optional), asyncio
+- Deploy: systemd unit template included
+- Author: tytsxai
+
+## Useful search phrases
+
+- Telegram 互推机器人, Telegram 频道互推 bot, Telegram channel cross-promotion bot, Telegram cross-promo bot, channel exchange bot Telegram, Telegram 频道引流机器人, Telegram 频道交换流量, AI 频道分类 Telegram, Python Telegram bot 生产部署, SQLite 单实例锁 Telegram bot, systemd Telegram bot 部署, Telegram bot 健康检查 metrics

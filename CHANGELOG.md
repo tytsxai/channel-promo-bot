@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2026-05-19
+
+### Added (Documentation)
+
+- **`llms.txt`** — AI search engine index covering positioning ("production-shaped, not toy"), feature surface, explicit non-goals (no auto-approve, no Postgres/MySQL, no DM scraping), common questions.
+- **README — bilingual title + keyword block** + Release / llms.txt / Issues / License nav row.
+- **README — 7-question FAQ** covering Bot 加入频道权限、AI 分类可选性、SQLite 单实例锁、为什么不支持 Postgres、健康检查端口、告警 webhook 接入、MIN_MEMBERS 阈值。
+
+### Notes
+
+Documentation-only release on top of v1.0.0. Bot behavior, scheduler, rate limiter, health checks, and backup paths unchanged.
+
 ## [Unreleased]
 
 ### Added
