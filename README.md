@@ -339,3 +339,7 @@ PYTHON_BIN=.venv312/bin/python ./scripts/preflight.sh
 ## 许可证
 
 MIT License
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=tytsxai/channel-promo-bot&type=Date)](https://www.star-history.com/#tytsxai/channel-promo-bot&Date)
