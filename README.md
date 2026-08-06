@@ -6,7 +6,15 @@
 >
 > **Keywords**: Telegram channel cross-promotion bot · Telegram cross-promo bot · channel exchange bot · Telegram channel growth automation · production-ready Python Telegram bot · systemd Telegram bot deployment · SQLite single-instance lock · AI channel classification
 
-一个用于管理 Telegram 频道互相推广的机器人,支持频道提交、管理员审核、AI 自动分类和定时群发互推文案。**面向生产部署**:单实例锁防 SQLite 并发写损坏、分布式锁防多实例重复推送、健康检查 + 指标端点、systemd 部署模板、备份脚本、告警 hook。
+一个用于管理 Telegram 频道互相推广的机器人，支持频道提交、管理员审核、AI 自动分类和定时群发互推文案。**面向生产部署**：单实例锁防 SQLite 并发写损坏、分布式锁防多实例重复推送、健康检查 + 指标端点、systemd 部署模板、备份脚本、告警 hook。
+
+## 是什么 / 适合谁 / 限制
+
+| | 说明 |
+|--|------|
+| **是什么** | Telegram 频道互推（cross-promotion）管理 Bot：提交 → 审核 → 可选 AI 分类 → 定时群发 |
+| **适合谁** | 运营多个 TG 频道、需要互推队列与审核流的个人/小团队；要 systemd + 备份 + 健康检查的运维 |
+| **限制** | 仅 SQLite（有意设计）；非参与频道不会被推；不自动免审；需 Bot 进频道且提交者为频道管理；Python ≥ 3.11 |
 
 ## 功能特性
 

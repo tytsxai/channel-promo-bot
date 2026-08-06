@@ -1,14 +1,25 @@
 [project]
 name = "channel-promo-bot"
 version = "1.0.0"
-description = "Telegram 频道互推机器人，支持频道提交、管理员审核、AI 自动分类和定时群发"
+description = "Production-ready Telegram channel cross-promotion bot (互推): submit/review, optional OpenAI classify, scheduled promo broadcast, SQLite locks, health checks, systemd"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
     { name = "tytsxai" },
 ]
-keywords = ["telegram", "bot", "aiogram", "channel", "promotion"]
+keywords = [
+    "telegram",
+    "bot",
+    "aiogram",
+    "channel",
+    "cross-promotion",
+    "promo",
+    "sqlite",
+    "openai",
+    "systemd",
+    "channel-promo-bot",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -30,6 +41,13 @@ dependencies = [
     "openai>=1.6.1,<2.0.0",
     "httpx>=0.26.0,<1.0.0",
 ]
+
+
+[project.urls]
+Homepage = "https://github.com/tytsxai/channel-promo-bot"
+Repository = "https://github.com/tytsxai/channel-promo-bot"
+Documentation = "https://github.com/tytsxai/channel-promo-bot#readme"
+Issues = "https://github.com/tytsxai/channel-promo-bot/issues"
 
 [project.optional-dependencies]
 dev = [
